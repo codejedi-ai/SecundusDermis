@@ -1,0 +1,25 @@
+[project]
+name = "secundus-dermis"
+version = "2.0.0"
+description = "AI Fashion Agent API — text search, image search, and conversational recommendations"
+requires-python = ">=3.10"
+dependencies = [
+    # API framework
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+    # Embeddings — Gemini multimodal (replaces torch + open_clip)
+    "google-genai>=1.0.0",
+    # ADK agent framework
+    "google-adk>=0.4.0",
+    # Vector database
+    "chromadb>=0.4.0",
+    # Utilities
+    "numpy>=1.24.0",
+    "pillow>=10.0.0",
+    "tqdm>=4.65.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    # Kaggle dataset download
+    "kaggle>=1.6.0",
+]

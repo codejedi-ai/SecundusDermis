@@ -1,0 +1,17 @@
+/* Import all CSS modules */
+@import './styles/variables.css';
+@import './styles/base.css';
+@import './styles/utilities.css';
+@import './styles/components.css';
+@import './styles/header.css';
+@import './styles/footer.css';
+@import './styles/home.css';
+@import './styles/product.css';
+@import './styles/about.css';
+@import './styles/faq.css';
+@import './styles/contact.css';
+@import './styles/blog.css';
+@import './styles/responsive.css';
+@import './styles/auth.css';
+@import './styles/cart.css';
+@import './styles/chat.css';

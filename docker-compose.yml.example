@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      - GEMINI_API_KEY=your_gemini_api_key
+      - GOOGLE_API_KEY=your_google_api_key
+      - KAGGLE_API_TOKEN=your_kaggle_api_token
+      - PORT=8000
+    volumes:
+      - backend-data:/app/data
+      - backend-chroma:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http --url=your-ngrok-domain.ngrok-free.app frontend:80
+    environment:
+      - NGROK_AUTHTOKEN=your_ngrok_authtoken
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-chroma:

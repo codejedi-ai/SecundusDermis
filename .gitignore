@@ -1,0 +1,55 @@
+# Local docker-compose override (use docker-compose.example.yml as template)
+docker-compose.yml
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data files
+*.zip
+*.tar.gz
+*.tar
+*.gz
+*.bin
+*.pkl
+*.pickle
+*.feather
+*.parquet
+
+# Database / vector store
+chroma_db/
+*.sqlite3
+*.db
+
+# Data directories
+backend/data/
+data/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

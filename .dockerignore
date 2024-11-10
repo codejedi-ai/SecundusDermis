@@ -1,0 +1,23 @@
+# Python
+backend/.venv
+backend/__pycache__
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Generated / large data — downloaded at runtime by download_data.py
+backend/chroma_db
+backend/data
+backend/uploads
+
+# Build artifacts (already excluded from context but explicit is clearer)
+backend/*.zip
+backend/ingest-pipeline.zip
+
+# Frontend build artifacts and deps
+frontend/node_modules
+frontend/dist
+
+# Git
+.git
+.gitignore

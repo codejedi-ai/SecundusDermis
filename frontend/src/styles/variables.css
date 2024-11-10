@@ -1,0 +1,62 @@
+:root {
+  --color-primary: #1a1a1a;
+  --color-primary-light: #2d2d2d;
+  --color-secondary: #f5f5f5;
+  --color-accent: #c4a77d;
+  --color-accent-light: #d4bc9a;
+  --color-accent-dark: #a08960;
+  --color-rose: #d4a5a5;
+  --color-rose-light: #e8c4c4;
+  --color-white: #ffffff;
+  --color-off-white: #fafafa;
+  --color-cream: #f8f6f3;
+  --color-charcoal: #333333;
+
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f5f5f5;
+  --color-gray-200: #e5e5e5;
+  --color-gray-300: #d4d4d4;
+  --color-gray-400: #a3a3a3;
+  --color-gray-500: #737373;
+  --color-gray-600: #525252;
+  --color-gray-700: #404040;
+  --color-gray-800: #262626;
+  --color-gray-900: #171717;
+
+  --color-success: #4a7c59;
+  --color-error: #c45c5c;
+  --color-warning: #c4a35c;
+
+  --font-primary: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-editorial: 'Inter', system-ui, sans-serif;
+
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-5: 2.5rem;
+  --space-6: 3rem;
+  --space-8: 4rem;
+  --space-10: 5rem;
+  --space-12: 6rem;
+  --space-16: 8rem;
+  --space-20: 10rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
+
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 300ms ease;
+  --transition-slow: 450ms ease;
+
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-full: 9999px;
+
+  --header-height: 60px;
+}

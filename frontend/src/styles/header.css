@@ -1,0 +1,330 @@
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: var(--color-white);
+  z-index: 1000;
+  transition: all var(--transition-normal);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.header-scrolled {
+  background: var(--color-white);
+  box-shadow: 0 1px 0 var(--color-gray-200);
+}
+
+.header-inner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--space-6);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.header-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+/* Search input in the header */
+.header-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 280px;
+  min-width: 120px;
+}
+
+.header-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--color-gray-400);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.header-search-input {
+  width: 100%;
+  padding: 6px 28px 6px 28px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 5px;
+  font-size: 0.8rem;
+  background: var(--color-gray-50, #f7f7f7);
+  color: var(--color-primary);
+  outline: none;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.header-search-input:focus {
+  border-color: var(--color-gray-400);
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.04);
+}
+
+/* Subtle highlight when AI populates the search */
+.header-search-input.ai-active {
+  border-color: var(--color-primary);
+  background: #fff;
+}
+
+.header-search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-gray-400);
+  padding: 0;
+}
+
+.header-search-clear:hover { color: var(--color-primary); }
+
+.logo {
+  justify-self: center;
+}
+
+.logo-link {
+  display: flex;
+  align-items: center;
+}
+
+.logo-text {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.nav-main,
+.nav-secondary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.nav-link {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--color-primary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  position: relative;
+  padding: 4px 0;
+}
+
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--color-primary);
+  transition: width var(--transition-normal);
+}
+
+.nav-link:hover::after {
+  width: 100%;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.header-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.header-icon-btn:hover {
+  opacity: 0.6;
+}
+
+.profile-img {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.user-menu {
+  position: relative;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 240px;
+  background: var(--color-white);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all var(--transition-normal);
+  z-index: 100;
+}
+
+.user-menu:hover .user-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-header {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.dropdown-name {
+  display: block;
+  font-weight: 500;
+  color: var(--color-primary);
+  margin-bottom: 2px;
+}
+
+.dropdown-email {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-gray-500);
+}
+
+.dropdown-links {
+  padding: var(--space-2) 0;
+}
+
+.dropdown-link {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  color: var(--color-gray-700);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.dropdown-link:hover {
+  background: var(--color-gray-50);
+  color: var(--color-primary);
+}
+
+.mobile-menu {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-white);
+  padding: var(--space-8) var(--space-6);
+  transform: translateX(-100%);
+  transition: transform var(--transition-normal);
+  z-index: 999;
+  display: none;
+}
+
+.mobile-menu-open {
+  transform: translateX(0);
+}
+
+.mobile-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mobile-nav-link {
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--color-primary);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-gray-100);
+  letter-spacing: 0.02em;
+}
+
+.mobile-signin {
+  display: inline-block;
+  margin-top: var(--space-6);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: var(--space-3) var(--space-6);
+  border: 1px solid var(--color-primary);
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .nav-secondary {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .nav-main {
+    display: none;
+  }
+
+  .header-search {
+    display: none;
+  }
+
+  .header-menu-btn {
+    display: flex;
+  }
+
+  .mobile-menu {
+    display: block;
+  }
+
+  .header-inner {
+    grid-template-columns: auto 1fr auto;
+    padding: 0 var(--space-3);
+  }
+
+  .logo {
+    justify-self: center;
+  }
+}

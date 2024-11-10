@@ -1,0 +1,15 @@
+# DeepFashion-MultiModal Ingestion Pipeline Requirements
+
+# Embedding model
+open-clip-torch>=2.24.0
+torch>=2.0.0
+
+# Vector database
+chromadb>=0.4.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Utilities
+numpy>=1.24.0
+tqdm>=4.65.0
