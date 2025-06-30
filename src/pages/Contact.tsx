@@ -121,7 +121,7 @@ const Contact = () => {
                 </div>
                 <div className="contact-details">
                   <h3>Email Us</h3>
-                  <p>hello@purelayer.com</p>
+                  <p>hello@secundusdermis.com</p>
                   <span className="contact-note">We typically respond within 24 hours</span>
                 </div>
               </div>
@@ -132,7 +132,7 @@ const Contact = () => {
                 </div>
                 <div className="contact-details">
                   <h3>Call Us</h3>
-                  <p>1-800-PURE-LAYER</p>
+                  <p>1-800-SECUNDUS</p>
                   <span className="contact-note">Monday - Friday, 9 AM - 6 PM EST</span>
                 </div>
               </div>

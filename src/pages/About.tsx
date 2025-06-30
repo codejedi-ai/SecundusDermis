@@ -33,7 +33,7 @@ const About = () => {
             <div className="hero-text">
               <h1 className="hero-title">Our Story</h1>
               <p className="hero-description">
-                Pure Layer was born from a simple belief: every woman deserves foundational 
+                Secundus Dermis was born from a simple belief: every woman deserves foundational 
                 wear that combines luxury, comfort, and thoughtful innovation. We're not just 
                 creating clothing—we're crafting confidence.
               </p>
@@ -41,7 +41,7 @@ const About = () => {
             <div className="hero-image">
               <img 
                 src="https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&cs=tinysrgb&w=800" 
-                alt="Pure Layer founder and team"
+                alt="Secundus Dermis founder and team"
                 className="hero-img"
               />
             </div>
@@ -137,7 +137,7 @@ const About = () => {
               <div className="commitment-item">
                 <h3>Quality Guarantee</h3>
                 <p>
-                  Every Pure Layer tee comes with our 1-year quality guarantee. We stand 
+                  Every Secundus Dermis tee comes with our 1-year quality guarantee. We stand 
                   behind our craftsmanship and materials.
                 </p>
               </div>
@@ -159,7 +159,7 @@ const About = () => {
                 <h3>Customer Care</h3>
                 <p>
                   Our dedicated customer care team is here to help with any questions 
-                  or concerns about your Pure Layer experience.
+                  or concerns about your Secundus Dermis experience.
                 </p>
               </div>
             </div>

@@ -26,7 +26,7 @@ const Product = () => {
             <div className="main-image">
               <img 
                 src={images[activeImageIndex]} 
-                alt="Pure Layer Premium White Tee"
+                alt="Secundus Dermis Premium White Tee"
                 className="main-img"
               />
             </div>
@@ -46,7 +46,7 @@ const Product = () => {
           {/* Product Details */}
           <div className="product-details">
             <div className="product-header">
-              <h1 className="product-title">Pure Layer Premium White Tee</h1>
+              <h1 className="product-title">Secundus Dermis Premium White Tee</h1>
               <div className="product-rating">
                 <div className="stars">
                   {[...Array(5)].map((_, i) => (

@@ -6,7 +6,7 @@ const Footer = () => {
       <div className="container">
         <div className="footer-content">
           <div className="footer-section">
-            <h3 className="footer-title">Pure Layer</h3>
+            <h3 className="footer-title">Secundus Dermis</h3>
             <p className="footer-description">
               Crafting the perfect foundation for your wardrobe with luxurious comfort, 
               innovative design, and thoughtful functionality.
@@ -51,11 +51,11 @@ const Footer = () => {
             <div className="contact-info">
               <div className="contact-item">
                 <Mail size={16} />
-                <span>hello@purelayer.com</span>
+                <span>hello@secundusdermis.com</span>
               </div>
               <div className="contact-item">
                 <Phone size={16} />
-                <span>1-800-PURE-LAYER</span>
+                <span>1-800-SECUNDUS</span>
               </div>
               <div className="contact-item">
                 <MapPin size={16} />
@@ -66,7 +66,7 @@ const Footer = () => {
         </div>
 
         <div className="footer-bottom">
-          <p>&copy; 2024 Pure Layer. All rights reserved.</p>
+          <p>&copy; 2024 Secundus Dermis. All rights reserved.</p>
           <p>Designed with care for the modern woman.</p>
         </div>
       </div>

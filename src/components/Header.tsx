@@ -12,7 +12,7 @@ const Header = () => {
         <div className="header-content">
           <div className="logo">
             <a href="/" className="logo-link">
-              <span className="logo-text">Pure Layer</span>
+              <span className="logo-text">Secundus Dermis</span>
             </a>
           </div>
 

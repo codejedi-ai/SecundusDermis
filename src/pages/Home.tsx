@@ -79,7 +79,7 @@ const Home = () => {
       <section className="features">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Why You'll Love Pure Layer</h2>
+            <h2 className="section-title">Why You'll Love Secundus Dermis</h2>
             <p className="section-description">
               Every detail has been carefully considered to create the ultimate foundation piece
             </p>

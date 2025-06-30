@@ -17,7 +17,7 @@ const FAQ = () => {
       category: "Product & Features",
       questions: [
         {
-          question: "What makes Pure Layer tees different from regular white tees?",
+          question: "What makes Secundus Dermis tees different from regular white tees?",
           answer: "Our tees feature a premium silk and cotton-spandex blend with silver infusion for odor resistance, an integrated seamless bra for support, and innovative emergency functionality. The slim-fitting design creates a perfect foundation layer that's invisible under clothes."
         },
         {
@@ -43,7 +43,7 @@ const FAQ = () => {
         },
         {
           question: "What if the size doesn't fit perfectly?",
-          answer: "We offer free exchanges within 30 days of purchase. Simply contact our customer service team, and we'll help you find the perfect fit. Our goal is to ensure you're completely satisfied with your Pure Layer experience."
+          answer: "We offer free exchanges within 30 days of purchase. Simply contact our customer service team, and we'll help you find the perfect fit. Our goal is to ensure you're completely satisfied with your Secundus Dermis experience."
         },
         {
           question: "Do the tees shrink after washing?",
@@ -55,16 +55,16 @@ const FAQ = () => {
       category: "Materials & Care",
       questions: [
         {
-          question: "What materials are used in Pure Layer tees?",
+          question: "What materials are used in Secundus Dermis tees?",
           answer: "Our exclusive blend features premium silk (40%), organic cotton (35%), spandex (20%), and ice-cotton (5%). The fabric is infused with silver ions for natural antimicrobial properties, providing luxury, comfort, and performance."
         },
         {
-          question: "How should I care for my Pure Layer tee?",
+          question: "How should I care for my Secundus Dermis tee?",
           answer: "Machine wash cold with like colors using gentle, sulfate-free detergent. Avoid fabric softeners to maintain the silver infusion. Tumble dry low or hang dry. Do not bleach or dry clean. Iron on low heat if needed, and store flat or hung to maintain shape."
         },
         {
-          question: "How long will my Pure Layer tee last?",
-          answer: "With proper care, your Pure Layer tee is designed to maintain its quality, shape, and functionality for years. We're so confident in our craftsmanship that we offer a 1-year quality guarantee on all our products."
+          question: "How long will my Secundus Dermis tee last?",
+          answer: "With proper care, your Secundus Dermis tee is designed to maintain its quality, shape, and functionality for years. We're so confident in our craftsmanship that we offer a 1-year quality guarantee on all our products."
         }
       ]
     },
@@ -93,7 +93,7 @@ const FAQ = () => {
         <div className="faq-header">
           <h1 className="page-title">Frequently Asked Questions</h1>
           <p className="page-description">
-            Find answers to common questions about Pure Layer tees, sizing, care, and more. 
+            Find answers to common questions about Secundus Dermis tees, sizing, care, and more. 
             Can't find what you're looking for? <a href="/contact" className="contact-link">Contact us</a> directly.
           </p>
         </div>
@@ -135,8 +135,8 @@ const FAQ = () => {
             <h3>Still have questions?</h3>
             <p>
               Our customer care team is here to help. Reach out to us at{' '}
-              <a href="mailto:hello@purelayer.com" className="contact-link">hello@purelayer.com</a>{' '}
-              or call <a href="tel:1-800-PURE-LAYER" className="contact-link">1-800-PURE-LAYER</a>.
+              <a href="mailto:hello@secundusdermis.com" className="contact-link">hello@secundusdermis.com</a>{' '}
+              or call <a href="tel:1-800-SECUNDUS" className="contact-link">1-800-SECUNDUS</a>.
             </p>
             <a href="/contact" className="btn btn-primary">Contact Us</a>
           </div>
