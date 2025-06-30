@@ -8,6 +8,8 @@ import Product from './pages/Product'
 import About from './pages/About'
 import Contact from './pages/Contact'
 import FAQ from './pages/FAQ'
+import Blog from './pages/Blog'
+import BlogPost from './pages/BlogPost'
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
           <About path="/about" />
           <FAQ path="/faq" />
           <Contact path="/contact" />
+          <Blog path="/blog" />
+          <BlogPost path="/blog/:id" />
         </Router>
       </main>
       <Footer />
