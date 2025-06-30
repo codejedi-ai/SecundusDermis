@@ -33,6 +33,8 @@ export const post2: BlogPost = {
     
     <p>During that crucial practice, Maya performed flawlessly. The high-impact jumps, the intense tumbling sequences, the demanding choreography—none of it caused the anxiety she usually felt. The Secundus Dermis provided reliable protection without any of the bulk or discomfort of traditional products.</p>
     
+    <p>"During the first few routines, I could feel the familiar sensation of liquid running through my bladder and exiting into the shirt," Maya explained with remarkable honesty. "But here's what was incredible—I didn't feel any wetness against my skin, and there was no staining visible on my uniform. The Secundus Dermis was taking care of everything, absorbing and containing it completely."</p>
+    
     <p>"I nailed every routine," Maya told us. "The college scout actually approached me afterward to discuss scholarship opportunities. But more importantly, I felt like myself again—confident, capable, and free from the constant fear of embarrassment."</p>
     
     <h3>The Team Dynamic</h3>
