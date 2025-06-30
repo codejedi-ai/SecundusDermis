@@ -20,6 +20,11 @@ const Blog = () => {
     return allBlogPosts.filter(post => post.category === category).length
   }
 
+  // Handle blog card click
+  const handleBlogCardClick = (postId: number) => {
+    window.location.href = `/blog/${postId}`
+  }
+
   return (
     <div className="blog-page">
       <div className="container">
@@ -97,7 +102,11 @@ const Blog = () => {
           {filteredPosts.length > 0 ? (
             <div className="posts-grid">
               {filteredPosts.map((post) => (
-                <article key={post.id} className="blog-card">
+                <article 
+                  key={post.id} 
+                  className="blog-card"
+                  onClick={() => handleBlogCardClick(post.id)}
+                >
                   <div className="blog-image">
                     <img src={post.image} alt={post.title} />
                     <div className="blog-category">{post.category}</div>

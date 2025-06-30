@@ -149,6 +149,18 @@
   box-shadow: var(--shadow-md);
   overflow: hidden;
   transition: all var(--transition-normal);
+  cursor: pointer;
+  position: relative;
+}
+
+.blog-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
 }
 
 .blog-card:hover {
@@ -187,6 +199,8 @@
 
 .blog-content {
   padding: var(--space-5);
+  position: relative;
+  z-index: 2;
 }
 
 .blog-meta {
@@ -216,6 +230,8 @@
   font-weight: 600;
   line-height: 1.4;
   transition: color var(--transition-fast);
+  position: relative;
+  z-index: 3;
 }
 
 .blog-title a:hover {
@@ -236,6 +252,8 @@
   font-weight: 600;
   font-size: 0.875rem;
   transition: all var(--transition-fast);
+  position: relative;
+  z-index: 3;
 }
 
 .read-more:hover {
@@ -397,11 +415,26 @@
   color: var(--color-primary);
 }
 
+.post-body h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: var(--space-6) 0 var(--space-3);
+  color: var(--color-primary);
+}
+
+.post-body h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--color-primary);
+}
+
 .post-body p {
   margin-bottom: var(--space-4);
 }
 
-.post-body ul {
+.post-body ul,
+.post-body ol {
   margin: var(--space-4) 0;
   padding-left: var(--space-6);
 }

@@ -3,6 +3,7 @@ import { post1 } from './post-1'
 import { post2 } from './post-2'
 import { post3 } from './post-3'
 import { post4 } from './post-4'
+import { post5 } from './post-5'
 import { BlogPost } from '../blogPosts'
 
 // Export all posts as an array
@@ -11,6 +12,7 @@ export const allBlogPosts: BlogPost[] = [
   post2,
   post3,
   post4,
+  post5,
   // Add more posts here as they are created
 ]
 
@@ -19,7 +21,8 @@ export {
   post1,
   post2,
   post3,
-  post4
+  post4,
+  post5
 }
 
 // Helper function to get a post by ID
