@@ -1,5 +1,5 @@
-import React from "react";
-import mermaid from "mermaid";
+import { Component } from 'preact'
+import mermaid from 'mermaid'
 
 mermaid.initialize({
   startOnLoad: true,
@@ -51,13 +51,18 @@ mermaid.initialize({
       stroke-width: 1;
     }`,
   fontFamily: "Fira Code"
-});
+})
 
-export default class MermaidRenderer extends React.Component {
+interface MermaidRendererProps {
+  chart: string
+}
+
+export default class MermaidRenderer extends Component<MermaidRendererProps> {
   componentDidMount() {
-    mermaid.contentLoaded();
+    mermaid.contentLoaded()
   }
+  
   render() {
-    return <div className="mermaid">{this.props.chart}</div>;
+    return <div className="mermaid">{this.props.chart}</div>
   }
 }
