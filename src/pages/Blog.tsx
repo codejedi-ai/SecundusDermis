@@ -1,6 +1,9 @@
+import { useState } from 'preact/hooks'
 import { Calendar, User, ArrowRight, Clock } from 'lucide-preact'
 
 const Blog = () => {
+  const [activeCategory, setActiveCategory] = useState('All')
+
   const featuredPost = {
     id: 1,
     title: "The Science Behind Perfect Layering: Why Your Foundation Matters",
@@ -14,9 +17,19 @@ const Blog = () => {
     featured: true
   }
 
-  const blogPosts = [
+  const allBlogPosts = [
     {
       id: 2,
+      title: "Secundus Dermis as an Underwear? Understanding the Versatility",
+      excerpt: "Exploring the innovative design that allows our premium tee to function as both a foundation layer and emergency underwear solution.",
+      author: "Dr. Rachel Kim",
+      date: "2024-01-18",
+      readTime: "6 min read",
+      category: "Product Guide",
+      image: "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800"
+    },
+    {
+      id: 3,
       title: "5 Ways to Style Your White Tee for Every Occasion",
       excerpt: "From boardroom to brunch, discover versatile styling tips that make your Secundus Dermis tee work for any setting.",
       author: "Emma Rodriguez",
@@ -26,7 +39,7 @@ const Blog = () => {
       image: "https://images.pexels.com/photos/7679721/pexels-photo-7679721.jpeg?auto=compress&cs=tinysrgb&w=800"
     },
     {
-      id: 3,
+      id: 4,
       title: "The Ultimate Guide to Fabric Care: Preserving Your Investment",
       excerpt: "Learn professional tips to maintain the luxurious feel and longevity of your premium silk-cotton blend garments.",
       author: "Dr. Lisa Park",
@@ -36,7 +49,7 @@ const Blog = () => {
       image: "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800"
     },
     {
-      id: 4,
+      id: 5,
       title: "Sustainable Fashion: Why Quality Over Quantity Matters",
       excerpt: "Explore how investing in premium, long-lasting pieces contributes to a more sustainable and mindful wardrobe.",
       author: "Maya Thompson",
@@ -46,7 +59,7 @@ const Blog = () => {
       image: "https://images.pexels.com/photos/7679722/pexels-photo-7679722.jpeg?auto=compress&cs=tinysrgb&w=800"
     },
     {
-      id: 5,
+      id: 6,
       title: "The Psychology of Comfort: How What You Wear Affects How You Feel",
       excerpt: "Discover the connection between comfortable clothing and confidence, backed by research and real experiences.",
       author: "Dr. Rachel Kim",
@@ -56,7 +69,7 @@ const Blog = () => {
       image: "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&cs=tinysrgb&w=800"
     },
     {
-      id: 6,
+      id: 7,
       title: "Innovation in Intimate Apparel: The Future of Foundation Wear",
       excerpt: "A look at how technology and thoughtful design are revolutionizing the intimate apparel industry.",
       author: "Tech Team",
@@ -66,7 +79,7 @@ const Blog = () => {
       image: "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800"
     },
     {
-      id: 7,
+      id: 8,
       title: "Building a Capsule Wardrobe: Essential Foundation Pieces",
       excerpt: "Learn how to create a versatile, minimalist wardrobe that starts with the perfect foundation layers.",
       author: "Style Team",
@@ -74,10 +87,72 @@ const Blog = () => {
       readTime: "6 min read",
       category: "Wardrobe",
       image: "https://images.pexels.com/photos/7679721/pexels-photo-7679721.jpeg?auto=compress&cs=tinysrgb&w=800"
+    },
+    {
+      id: 9,
+      title: "The Art of Layering: Mastering Foundation Garments",
+      excerpt: "Professional styling secrets for creating flawless layered looks that start with the perfect base.",
+      author: "Emma Rodriguez",
+      date: "2024-01-20",
+      readTime: "5 min read",
+      category: "Styling",
+      image: "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&cs=tinysrgb&w=800"
+    },
+    {
+      id: 10,
+      title: "Silver-Infused Fabrics: The Science of Odor Control",
+      excerpt: "Understanding how silver ions work to keep your garments fresh and why this technology matters for intimate wear.",
+      author: "Dr. Lisa Park",
+      date: "2024-01-22",
+      readTime: "7 min read",
+      category: "Innovation",
+      image: "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800"
+    },
+    {
+      id: 11,
+      title: "Traveling Light: Essential Garments for the Modern Woman",
+      excerpt: "How versatile foundation pieces can revolutionize your travel wardrobe and reduce packing stress.",
+      author: "Maya Thompson",
+      date: "2024-01-25",
+      readTime: "4 min read",
+      category: "Lifestyle",
+      image: "https://images.pexels.com/photos/7679722/pexels-photo-7679722.jpeg?auto=compress&cs=tinysrgb&w=800"
+    },
+    {
+      id: 12,
+      title: "Understanding Fabric Blends: Why Our Mix is Perfect",
+      excerpt: "Deep dive into the science behind our silk, cotton, spandex, and ice-cotton blend and why each component matters.",
+      author: "Tech Team",
+      date: "2024-01-28",
+      readTime: "6 min read",
+      category: "Product Guide",
+      image: "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800"
     }
   ]
 
-  const categories = ["All", "Fashion Tips", "Styling", "Care Guide", "Sustainability", "Wellness", "Innovation", "Wardrobe"]
+  const categories = [
+    "All", 
+    "Fashion Tips", 
+    "Styling", 
+    "Care Guide", 
+    "Sustainability", 
+    "Wellness", 
+    "Innovation", 
+    "Wardrobe",
+    "Product Guide",
+    "Lifestyle"
+  ]
+
+  // Filter posts based on active category
+  const filteredPosts = activeCategory === 'All' 
+    ? allBlogPosts 
+    : allBlogPosts.filter(post => post.category === activeCategory)
+
+  // Get category counts
+  const getCategoryCount = (category: string) => {
+    if (category === 'All') return allBlogPosts.length
+    return allBlogPosts.filter(post => post.category === category).length
+  }
 
   return (
     <div className="blog-page">
@@ -134,9 +209,13 @@ const Blog = () => {
         <div className="category-filter">
           <h3>Browse by Category</h3>
           <div className="category-buttons">
-            {categories.map((category, index) => (
-              <button key={index} className={`category-btn ${index === 0 ? 'active' : ''}`}>
-                {category}
+            {categories.map((category) => (
+              <button 
+                key={category} 
+                className={`category-btn ${activeCategory === category ? 'active' : ''}`}
+                onClick={() => setActiveCategory(category)}
+              >
+                {category} ({getCategoryCount(category)})
               </button>
             ))}
           </div>
@@ -144,44 +223,52 @@ const Blog = () => {
 
         {/* Blog Posts Grid */}
         <section className="blog-posts">
-          <h2 className="section-title">Latest Articles</h2>
-          <div className="posts-grid">
-            {blogPosts.map((post) => (
-              <article key={post.id} className="blog-card">
-                <div className="blog-image">
-                  <img src={post.image} alt={post.title} />
-                  <div className="blog-category">{post.category}</div>
-                </div>
-                <div className="blog-content">
-                  <div className="blog-meta">
-                    <span className="blog-author">
-                      <User size={12} />
-                      {post.author}
-                    </span>
-                    <span className="blog-date">
-                      <Calendar size={12} />
-                      {new Date(post.date).toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric' 
-                      })}
-                    </span>
-                    <span className="blog-read-time">
-                      <Clock size={12} />
-                      {post.readTime}
-                    </span>
+          <h2 className="section-title">
+            {activeCategory === 'All' ? 'Latest Articles' : `${activeCategory} Articles`}
+          </h2>
+          {filteredPosts.length > 0 ? (
+            <div className="posts-grid">
+              {filteredPosts.map((post) => (
+                <article key={post.id} className="blog-card">
+                  <div className="blog-image">
+                    <img src={post.image} alt={post.title} />
+                    <div className="blog-category">{post.category}</div>
                   </div>
-                  <h3 className="blog-title">
-                    <a href={`/blog/${post.id}`}>{post.title}</a>
-                  </h3>
-                  <p className="blog-excerpt">{post.excerpt}</p>
-                  <a href={`/blog/${post.id}`} className="read-more">
-                    Read More
-                    <ArrowRight size={16} />
-                  </a>
-                </div>
-              </article>
-            ))}
-          </div>
+                  <div className="blog-content">
+                    <div className="blog-meta">
+                      <span className="blog-author">
+                        <User size={12} />
+                        {post.author}
+                      </span>
+                      <span className="blog-date">
+                        <Calendar size={12} />
+                        {new Date(post.date).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </span>
+                      <span className="blog-read-time">
+                        <Clock size={12} />
+                        {post.readTime}
+                      </span>
+                    </div>
+                    <h3 className="blog-title">
+                      <a href={`/blog/${post.id}`}>{post.title}</a>
+                    </h3>
+                    <p className="blog-excerpt">{post.excerpt}</p>
+                    <a href={`/blog/${post.id}`} className="read-more">
+                      Read More
+                      <ArrowRight size={16} />
+                    </a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="no-posts">
+              <p>No articles found in this category yet. Check back soon for new content!</p>
+            </div>
+          )}
         </section>
 
         {/* Newsletter Signup */}
