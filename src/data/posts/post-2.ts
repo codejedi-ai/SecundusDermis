@@ -113,11 +113,19 @@ export const post2: BlogPost = {
     
     <p>Maya understood that her beloved protector could no longer serve its crucial function. The structural integrity was compromised, and she couldn't risk a malfunction during her final competition.</p>
     
-    <p>"I had to use a traditional pad for my last competition," she recalls with disappointment. "It felt so bulky and uncomfortable after years of the seamless protection from my Secundus Dermis. I performed well, but I felt the difference. I felt less confident, less secure."</p>
+    <p>"I knew I needed a solution for my last competition," she recalls. "That's when my aunt came to the rescue again. When I showed her the torn pieces and explained what had happened, she immediately understood how important this was to me."</p>
+    
+    <h3>The Makeshift Solution</h3>
+    
+    <p>Maya's aunt, who had some sewing experience, looked at the bottom section that had torn away and had an idea. "She said we could create a proper makeshift pad using the bottom piece," Maya explains. "It still had all the protective properties—the silver infusion, the absorbent fabric blend—it just needed to be configured differently."</p>
+    
+    <p>Working together, they carefully shaped and reinforced the torn bottom section, creating a custom protective liner that Maya could use for her final competition. "It wasn't the same as having the full shirt," Maya admits, "but it was made from my protector, so it still felt like it was taking care of me."</p>
+    
+    <p>For her final competition, Maya used this makeshift pad created from her beloved Secundus Dermis. "I performed well, and the protection worked perfectly," she recalls with satisfaction. "Even in pieces, my shirt was still protecting me. It felt like the perfect way to end my high school cheerleading career—with my faithful companion still by my side, just in a different form."</p>
     
     <h3>The Grief and Gratitude</h3>
     
-    <p>"I actually cried that night," Maya admits without embarrassment. "This shirt had been with me through everything—my lowest moments of fear and embarrassment, and my highest moments of athletic achievement. And I had destroyed it in a moment of panic."</p>
+    <p>"I actually cried that night after the competition," Maya admits without embarrassment. "This shirt had been with me through everything—my lowest moments of fear and embarrassment, and my highest moments of athletic achievement. And even though I had damaged it in a moment of panic, it still found a way to protect me one last time."</p>
     
     <p>But even in her grief, Maya felt overwhelming gratitude. "Even though I had torn it, I realized it had given me everything it had to give. Two years of protection, confidence, and freedom. It had literally sacrificed itself for me, piece by piece, stain by stain, and finally, tear by tear."</p>
     
