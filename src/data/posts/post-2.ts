@@ -123,6 +123,14 @@ export const post2: BlogPost = {
     
     <p>For her final competition, Maya used this makeshift pad created from her beloved Secundus Dermis. "I performed well, and the protection worked perfectly," she recalls with satisfaction. "Even in pieces, my shirt was still protecting me. It felt like the perfect way to end my high school cheerleading career—with my faithful companion still by my side, just in a different form."</p>
     
+    <h3>The Makeshift Solution</h3>
+    
+    <p>Maya's aunt, who had some sewing experience, looked at the bottom section that had torn away and had an idea. "She said we could create a proper makeshift pad using the bottom piece," Maya explains. "It still had all the protective properties—the silver infusion, the absorbent fabric blend—it just needed to be configured differently."</p>
+    
+    <p>Working together, they carefully shaped and reinforced the torn bottom section, creating a custom protective liner that Maya could use for her final competition. "It wasn't the same as having the full shirt," Maya admits, "but it was made from my protector, so it still felt like it was taking care of me."</p>
+    
+    <p>For her final competition, Maya used this makeshift pad created from her beloved Secundus Dermis. "I performed well, and the protection worked perfectly," she recalls with satisfaction. "Even in pieces, my shirt was still protecting me. It felt like the perfect way to end my high school cheerleading career—with my faithful companion still by my side, just in a different form."</p>
+    
     <h3>The Grief and Gratitude</h3>
     
     <p>"I actually cried that night after the competition," Maya admits without embarrassment. "This shirt had been with me through everything—my lowest moments of fear and embarrassment, and my highest moments of athletic achievement. And even though I had damaged it in a moment of panic, it still found a way to protect me one last time."</p>
