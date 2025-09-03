@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Calendar, User, ArrowRight, Clock } from 'lucide-react'
 import { allBlogPosts, getFeaturedPosts, getPostsByCategory } from '../data/posts'
 import { blogCategories } from '../data/blogPosts'

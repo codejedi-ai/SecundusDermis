@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Plus, Minus, Heart, Share2, Truck, Shield, RotateCcw, Star } from 'lucide-react'
 
 const Product = () => {

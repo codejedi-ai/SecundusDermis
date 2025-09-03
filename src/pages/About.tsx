@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { Heart, Award, Users, Leaf } from 'lucide-react'
 
 const About = () => {

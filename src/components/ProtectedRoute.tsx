@@ -1,5 +1,6 @@
-import React, { ReactNode } from 'react'
+import { ReactNode } from 'react'
 import { useUser } from '@clerk/clerk-react'
+import { Navigate } from 'react-router-dom'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -23,8 +24,7 @@ const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
       return <>{fallback}</>
     }
     
-    window.location.href = '/sign-in'
-    return null
+    return <Navigate to="/sign-in" replace />
   }
 
   return <>{children}</>

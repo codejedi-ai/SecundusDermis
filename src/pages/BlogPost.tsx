@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { useParams } from 'react-router-dom'
 import { Calendar, User, Clock, ArrowLeft, Share2, Heart } from 'lucide-react'
 import { getPostById, getRecentPosts } from '../data/posts'

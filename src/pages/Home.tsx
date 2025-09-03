@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { Star, Shield, Heart, Sparkles, ArrowRight, Check } from 'lucide-react'
 
 const Home = () => {

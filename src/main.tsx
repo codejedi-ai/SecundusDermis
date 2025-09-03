@@ -1,4 +1,4 @@
-import React from 'react'
+
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
@@ -16,6 +16,7 @@ import Account from './pages/Account'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import Cart from './pages/Cart'
+import ProtectedRoute from './components/ProtectedRoute'
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -38,7 +39,11 @@ function App() {
               <Route path="/contact" element={<Contact />} />
               <Route path="/blog" element={<Blog />} />
               <Route path="/blog/:id" element={<BlogPost />} />
-              <Route path="/account" element={<Account />} />
+              <Route path="/account" element={
+                <ProtectedRoute fallback={<SignIn />}>
+                  <Account />
+                </ProtectedRoute>
+              } />
               <Route path="/sign-in" element={<SignIn />} />
               <Route path="/sign-up" element={<SignUp />} />
               <Route path="/cart" element={<Cart />} />

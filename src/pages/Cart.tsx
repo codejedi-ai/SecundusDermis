@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { ShoppingBag, Plus, Minus, Trash2, ArrowLeft } from 'lucide-react'
 import ProtectedRoute from '../components/ProtectedRoute'
 

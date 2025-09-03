@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Menu, X, ShoppingBag, User } from 'lucide-react'
+import { useState } from 'react'
+import { Menu, X, ShoppingBag } from 'lucide-react'
 import { useUser, useClerk } from '@clerk/clerk-react'
 
 const Header = () => {
@@ -13,6 +13,9 @@ const Header = () => {
     await signOut()
     window.location.href = '/'
   }
+
+  // Check if the current page is the sign-in page
+  const isSignInPage = window.location.pathname === '/sign-in'
 
   return (
     <header className="header">
@@ -72,7 +75,10 @@ const Header = () => {
                 </div>
               </>
             ) : (
-              <a href="/sign-in" className="btn btn-primary sign-in-btn">Sign In</a>
+              // This is the updated condition
+              !isSignInPage && (
+                <a href="/sign-in" className="btn btn-primary sign-in-btn">Sign In</a>
+              )
             )}
             <button 
               className="menu-toggle"

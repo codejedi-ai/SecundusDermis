@@ -1,20 +1,14 @@
-import React from 'react'
+
 import { useUser, useClerk } from '@clerk/clerk-react'
 import { UserProfile } from '@clerk/clerk-react'
 import { Package, Heart, Settings, LogOut } from 'lucide-react'
 
 const Account = () => {
-  const { isSignedIn, user } = useUser()
+  const { user } = useUser()
   const { signOut } = useClerk()
 
-  if (!isSignedIn) {
-    window.location.href = '/sign-in'
-    return null
-  }
-
   const handleSignOut = async () => {
-    await signOut()
-    window.location.href = '/'
+    await signOut({ redirectUrl: '/' })
   }
 
   return (
