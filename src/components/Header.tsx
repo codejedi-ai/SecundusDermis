@@ -39,14 +39,28 @@ const Header = () => {
           </nav>
 
           <div className="header-actions">
+            <button className="icon-button cart-button" aria-label="Shopping cart">
+              <ShoppingBag size={20} />
+              <span className="cart-count">0</span>
+            </button>
             {isSignedIn ? (
               <div className="user-menu">
-                <a href="/account" className="icon-button" aria-label="Account">
-                  <User size={20} />
-                </a>
+                <button className="profile-button" aria-label="User menu">
+                  {user?.imageUrl ? (
+                    <img 
+                      src={user.imageUrl} 
+                      alt={user.firstName || 'User'} 
+                      className="profile-image"
+                    />
+                  ) : (
+                    <div className="profile-placeholder">
+                      {user?.firstName?.[0]}{user?.lastName?.[0]}
+                    </div>
+                  )}
+                </button>
                 <div className="user-dropdown">
                   <div className="user-info">
-                    <span className="user-name">{user?.firstName || 'Account'}</span>
+                    <span className="user-name">{user?.firstName} {user?.lastName}</span>
                     <span className="user-email">{user?.primaryEmailAddress?.emailAddress}</span>
                   </div>
                   <div className="dropdown-actions">
@@ -56,15 +70,8 @@ const Header = () => {
                 </div>
               </div>
             ) : (
-              <div className="auth-buttons">
-                <a href="/sign-in" className="btn btn-secondary">Sign In</a>
-                <a href="/sign-up" className="btn btn-primary">Sign Up</a>
-              </div>
+              <a href="/sign-in" className="btn btn-primary sign-in-btn">Sign In</a>
             )}
-            <button className="icon-button cart-button" aria-label="Shopping cart">
-              <ShoppingBag size={20} />
-              <span className="cart-count">0</span>
-            </button>
             <button 
               className="menu-toggle"
               onClick={toggleMenu}

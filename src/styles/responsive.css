@@ -268,6 +268,11 @@
     justify-content: center;
   }
 
+  .sign-in-btn {
+    width: auto;
+    min-width: 100px;
+  }
+
   .user-dropdown {
     position: fixed;
     top: 80px;

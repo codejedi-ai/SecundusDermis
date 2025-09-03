@@ -88,6 +88,50 @@
   z-index: 10;
 }
 
+.sign-in-btn {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.875rem;
+}
+
+.profile-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-gray-300);
+  background: var(--color-white);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+}
+
+.profile-button:hover {
+  border-color: var(--color-accent);
+  transform: scale(1.05);
+}
+
+.profile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-full);
+}
+
+.profile-placeholder {
+  background: var(--color-accent);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 0.875rem;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+}
+
 .cart-button {
   position: relative;
 }
