@@ -39,12 +39,13 @@ const Header = () => {
           </nav>
 
           <div className="header-actions">
-            <button className="icon-button cart-button" aria-label="Shopping cart">
-              <ShoppingBag size={20} />
-              <span className="cart-count">0</span>
-            </button>
             {isSignedIn ? (
-              <div className="user-menu">
+              <>
+                <a href="/cart" className="icon-button cart-button" aria-label="Shopping cart">
+                  <ShoppingBag size={20} />
+                  <span className="cart-count">0</span>
+                </a>
+                <div className="user-menu">
                 <button className="profile-button" aria-label="User menu">
                   {user?.imageUrl ? (
                     <img 
@@ -68,7 +69,8 @@ const Header = () => {
                     <button onClick={handleSignOut} className="dropdown-link">Sign Out</button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </>
             ) : (
               <a href="/sign-in" className="btn btn-primary sign-in-btn">Sign In</a>
             )}

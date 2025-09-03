@@ -15,6 +15,7 @@ import BlogPost from './pages/BlogPost'
 import Account from './pages/Account'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
+import Cart from './pages/Cart'
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -40,6 +41,7 @@ function App() {
               <Route path="/account" element={<Account />} />
               <Route path="/sign-in" element={<SignIn />} />
               <Route path="/sign-up" element={<SignUp />} />
+              <Route path="/cart" element={<Cart />} />
             </Routes>
           </main>
           <Footer />
