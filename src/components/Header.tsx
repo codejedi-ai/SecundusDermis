@@ -1,10 +1,18 @@
 import { useState } from 'preact/hooks'
 import { Menu, X, ShoppingBag, User } from 'lucide-preact'
+import { useUser, useClerk } from '@clerk/clerk-react'
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { isSignedIn, user } = useUser()
+  const { signOut } = useClerk()
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen)
+
+  const handleSignOut = async () => {
+    await signOut()
+    window.location.href = '/'
+  }
 
   return (
     <header className="header">
@@ -31,9 +39,28 @@ const Header = () => {
           </nav>
 
           <div className="header-actions">
-            <button className="icon-button" aria-label="Account">
-              <User size={20} />
-            </button>
+            {isSignedIn ? (
+              <div className="user-menu">
+                <a href="/account" className="icon-button" aria-label="Account">
+                  <User size={20} />
+                </a>
+                <div className="user-dropdown">
+                  <div className="user-info">
+                    <span className="user-name">{user?.firstName || 'Account'}</span>
+                    <span className="user-email">{user?.primaryEmailAddress?.emailAddress}</span>
+                  </div>
+                  <div className="dropdown-actions">
+                    <a href="/account" className="dropdown-link">My Account</a>
+                    <button onClick={handleSignOut} className="dropdown-link">Sign Out</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="auth-buttons">
+                <a href="/sign-in" className="btn btn-secondary">Sign In</a>
+                <a href="/sign-up" className="btn btn-primary">Sign Up</a>
+              </div>
+            )}
             <button className="icon-button cart-button" aria-label="Shopping cart">
               <ShoppingBag size={20} />
               <span className="cart-count">0</span>

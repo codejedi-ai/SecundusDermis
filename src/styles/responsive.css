@@ -199,4 +199,66 @@
   .post-newsletter .newsletter-form {
     flex-direction: column;
   }
+
+  /* Auth Mobile */
+  .auth-container {
+    padding: 0 var(--space-2);
+  }
+
+  .auth-form-container {
+    padding: var(--space-4);
+  }
+
+  /* Account Mobile */
+  .account-content {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+
+  .account-sidebar {
+    order: 1;
+  }
+
+  .account-main {
+    order: 0;
+  }
+
+  .user-info {
+    flex-direction: row;
+    text-align: left;
+    gap: var(--space-3);
+  }
+
+  .user-avatar {
+    margin-bottom: 0;
+  }
+
+  .account-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: var(--space-2);
+  }
+
+  .account-nav-link {
+    white-space: nowrap;
+    min-width: fit-content;
+  }
+
+  .auth-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .auth-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .user-dropdown {
+    position: fixed;
+    top: 80px;
+    left: var(--space-2);
+    right: var(--space-2);
+    width: auto;
+  }
 }

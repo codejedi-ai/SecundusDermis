@@ -1,0 +1,397 @@
+/* Authentication Styles */
+.auth-page {
+  padding-top: 100px;
+  padding-bottom: var(--space-8);
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--color-off-white) 0%, var(--color-gray-50) 100%);
+}
+
+.auth-container {
+  max-width: 500px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.auth-header {
+  margin-bottom: var(--space-8);
+}
+
+.auth-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  color: var(--color-primary);
+}
+
+.auth-description {
+  font-size: 1.125rem;
+  color: var(--color-gray-600);
+  line-height: 1.7;
+}
+
+.auth-form-container {
+  background: var(--color-white);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  margin-bottom: var(--space-6);
+}
+
+.auth-footer {
+  color: var(--color-gray-600);
+}
+
+.auth-link {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.auth-link:hover {
+  color: var(--color-accent-light);
+}
+
+/* Clerk Component Styling */
+.auth-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.auth-header-title {
+  display: none !important;
+}
+
+.auth-header-subtitle {
+  display: none !important;
+}
+
+.auth-button-primary {
+  background: var(--color-primary) !important;
+  border-radius: var(--radius-lg) !important;
+  font-weight: 600 !important;
+  padding: var(--space-3) var(--space-5) !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.auth-button-primary:hover {
+  background: var(--color-primary-light) !important;
+  transform: translateY(-2px) !important;
+}
+
+.auth-social-button {
+  border: 2px solid var(--color-gray-300) !important;
+  border-radius: var(--radius-lg) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.auth-social-button:hover {
+  border-color: var(--color-accent) !important;
+}
+
+.auth-input {
+  border: 2px solid var(--color-gray-300) !important;
+  border-radius: var(--radius-md) !important;
+  padding: var(--space-3) !important;
+  font-family: var(--font-primary) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.auth-input:focus {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1) !important;
+}
+
+/* Account Page Styles */
+.account-page {
+  padding-top: 100px;
+  padding-bottom: var(--space-8);
+}
+
+.account-content {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+}
+
+.account-sidebar {
+  background: var(--color-white);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  height: fit-content;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.user-avatar {
+  margin-bottom: var(--space-3);
+}
+
+.user-avatar img {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 80px;
+  height: 80px;
+  background: var(--color-accent);
+  color: var(--color-white);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.user-details h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  color: var(--color-primary);
+}
+
+.user-details p {
+  color: var(--color-gray-600);
+  font-size: 0.875rem;
+}
+
+.account-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.account-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  color: var(--color-gray-700);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1rem;
+  width: 100%;
+  text-align: left;
+}
+
+.account-nav-link:hover,
+.account-nav-link.active {
+  background: var(--color-gray-100);
+  color: var(--color-primary);
+}
+
+.account-nav-link.sign-out {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-gray-200);
+  color: var(--color-error);
+}
+
+.account-nav-link.sign-out:hover {
+  background: var(--color-error);
+  color: var(--color-white);
+}
+
+.account-main {
+  background: var(--color-white);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.account-section {
+  margin-bottom: var(--space-8);
+}
+
+.account-section h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+  color: var(--color-primary);
+}
+
+.orders-list {
+  background: var(--color-gray-50);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-gray-600);
+}
+
+.empty-state svg {
+  color: var(--color-gray-400);
+  margin-bottom: var(--space-3);
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+  color: var(--color-gray-700);
+}
+
+.empty-state p {
+  margin-bottom: var(--space-4);
+}
+
+.settings-container {
+  background: var(--color-gray-50);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+}
+
+/* Clerk Profile Styling */
+.clerk-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.clerk-header-title {
+  color: var(--color-primary) !important;
+  font-family: var(--font-display) !important;
+}
+
+.clerk-header-subtitle {
+  color: var(--color-gray-600) !important;
+}
+
+.clerk-button-primary {
+  background: var(--color-primary) !important;
+  border-radius: var(--radius-lg) !important;
+  font-weight: 600 !important;
+}
+
+.clerk-button-primary:hover {
+  background: var(--color-primary-light) !important;
+}
+
+/* User Menu Dropdown */
+.user-menu {
+  position: relative;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+  min-width: 200px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all var(--transition-fast);
+  z-index: 1000;
+}
+
+.user-menu:hover .user-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.user-info {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-gray-200);
+  margin-bottom: var(--space-3);
+}
+
+.user-name {
+  display: block;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+}
+
+.user-email {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+}
+
+.dropdown-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dropdown-link {
+  padding: var(--space-2);
+  color: var(--color-gray-700);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.dropdown-link:hover {
+  background: var(--color-gray-100);
+  color: var(--color-primary);
+}
+
+.auth-buttons {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.auth-buttons .btn {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.875rem;
+}
+
+/* Loading Styles */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  color: var(--color-gray-600);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-gray-200);
+  border-top: 3px solid var(--color-accent);
+  border-radius: var(--radius-full);
+  animation: spin 1s linear infinite;
+  margin-bottom: var(--space-3);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
