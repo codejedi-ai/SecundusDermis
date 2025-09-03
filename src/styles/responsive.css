@@ -14,6 +14,20 @@
 }
 
 @media (max-width: 768px) {
+  /* Header Mobile - Logo positioning */
+  .logo {
+    position: static;
+    margin-right: auto;
+  }
+
+  .header-actions {
+    position: static;
+  }
+
+  .nav {
+    padding: 0;
+  }
+
   /* Header Mobile */
   .nav {
     position: fixed;

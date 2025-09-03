@@ -14,14 +14,15 @@
 .header-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   height: 80px;
   width: 100%;
+  padding: 0;
 }
 
 .logo {
-  flex-shrink: 0;
-  margin-right: auto;
+  position: absolute;
+  left: var(--space-4);
+  z-index: 10;
 }
 
 .logo-link {
@@ -46,10 +47,10 @@
 .nav {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  flex: 1;
+  gap: var(--space-4);
   justify-content: center;
-  margin: 0 var(--space-4);
+  width: 100%;
+  padding: 0 200px;
 }
 
 .nav-link {
@@ -82,7 +83,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  position: absolute;
+  right: var(--space-4);
+  z-index: 10;
 }
 
 .cart-button {
