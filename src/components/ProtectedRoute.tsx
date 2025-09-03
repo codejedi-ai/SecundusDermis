@@ -1,9 +1,9 @@
+import React, { ReactNode } from 'react'
 import { useUser } from '@clerk/clerk-react'
-import { ComponentChildren } from 'preact'
 
 interface ProtectedRouteProps {
-  children: ComponentChildren
-  fallback?: ComponentChildren
+  children: ReactNode
+  fallback?: ReactNode
 }
 
 const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {

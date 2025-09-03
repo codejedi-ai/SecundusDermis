@@ -1,4 +1,5 @@
-import { Heart, Award, Users, Leaf } from 'lucide-preact'
+import React from 'react'
+import { Heart, Award, Users, Leaf } from 'lucide-react'
 
 const About = () => {
   const values = [

@@ -9,14 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "preact": "^10.24.3",
-    "preact-router": "^4.1.2",
-    "lucide-preact": "^0.460.0"
-  },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
-    "@preact/preset-vite": "^2.9.1",
     "eslint": "^9.13.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
@@ -24,5 +18,12 @@
     "globals": "^15.11.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.2"
   }
 }

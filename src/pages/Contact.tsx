@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks'
-import { Mail, Phone, MapPin, Clock, Send } from 'lucide-preact'
+import React, { useState } from 'react'
+import { Mail, Phone, MapPin, Clock, Send } from 'lucide-react'
 
 const Contact = () => {
   const [formData, setFormData] = useState({
@@ -9,15 +9,14 @@ const Contact = () => {
     message: ''
   })
 
-  const handleInputChange = (e: Event) => {
-    const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData(prev => ({
       ...prev,
-      [target.name]: target.value
+      [e.target.name]: e.target.value
     }))
   }
 
-  const handleSubmit = (e: Event) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Handle form submission here
     console.log('Form submitted:', formData)

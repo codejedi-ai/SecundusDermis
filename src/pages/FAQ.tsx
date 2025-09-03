@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks'
-import { ChevronDown, ChevronUp } from 'lucide-preact'
+import React, { useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 const FAQ = () => {
   const [openItems, setOpenItems] = useState<number[]>([])

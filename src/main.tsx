@@ -1,5 +1,6 @@
-import { render } from 'preact'
-import Router from 'preact-router'
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import Header from './components/Header'
@@ -24,26 +25,28 @@ if (!clerkPubKey) {
 function App() {
   return (
     <ClerkProvider publishableKey={clerkPubKey}>
-      <div className="app">
-        <Header />
-        <main>
-          <Router>
-            <Home path="/" />
-            <Product path="/product" />
-            <About path="/about" />
-            <FAQ path="/faq" />
-            <Contact path="/contact" />
-            <Blog path="/blog" />
-            <BlogPost path="/blog/:id" />
-            <Account path="/account" />
-            <SignIn path="/sign-in" />
-            <SignUp path="/sign-up" />
-          </Router>
-        </main>
-        <Footer />
-      </div>
+      <Router>
+        <div className="app">
+          <Header />
+          <main>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/product" element={<Product />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/faq" element={<FAQ />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/blog" element={<Blog />} />
+              <Route path="/blog/:id" element={<BlogPost />} />
+              <Route path="/account" element={<Account />} />
+              <Route path="/sign-in" element={<SignIn />} />
+              <Route path="/sign-up" element={<SignUp />} />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </Router>
     </ClerkProvider>
   )
 }
 
-render(<App />, document.getElementById('root')!)
+ReactDOM.createRoot(document.getElementById('root')!).render(<App />)

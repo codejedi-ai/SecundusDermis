@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks'
-import { Calendar, User, ArrowRight, Clock } from 'lucide-preact'
+import React, { useState } from 'react'
+import { Calendar, User, ArrowRight, Clock } from 'lucide-react'
 import { allBlogPosts, getFeaturedPosts, getPostsByCategory } from '../data/posts'
 import { blogCategories } from '../data/blogPosts'
 

@@ -1,4 +1,5 @@
-import { Mail, Phone, MapPin, Instagram, Facebook, Twitter } from 'lucide-preact'
+import React from 'react'
+import { Mail, Phone, MapPin, Instagram, Facebook, Twitter } from 'lucide-react'
 
 const Footer = () => {
   return (

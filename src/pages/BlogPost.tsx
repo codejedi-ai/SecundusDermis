@@ -1,8 +1,11 @@
-import { Calendar, User, Clock, ArrowLeft, Share2, Heart } from 'lucide-preact'
+import React from 'react'
+import { useParams } from 'react-router-dom'
+import { Calendar, User, Clock, ArrowLeft, Share2, Heart } from 'lucide-react'
 import { getPostById, getRecentPosts } from '../data/posts'
 import { blogAuthors } from '../data/blogPosts'
 
-const BlogPost = ({ id }: { id?: string }) => {
+const BlogPost = () => {
+  const { id } = useParams<{ id: string }>()
   const postId = parseInt(id || '1')
   const post = getPostById(postId)
   

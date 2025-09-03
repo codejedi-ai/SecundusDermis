@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks'
-import { Menu, X, ShoppingBag, User } from 'lucide-preact'
+import React, { useState } from 'react'
+import { Menu, X, ShoppingBag, User } from 'lucide-react'
 import { useUser, useClerk } from '@clerk/clerk-react'
 
 const Header = () => {

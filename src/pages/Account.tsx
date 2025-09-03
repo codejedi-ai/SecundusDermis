@@ -1,6 +1,7 @@
+import React from 'react'
 import { useUser, useClerk } from '@clerk/clerk-react'
 import { UserProfile } from '@clerk/clerk-react'
-import { Package, Heart, Settings, LogOut } from 'lucide-preact'
+import { Package, Heart, Settings, LogOut } from 'lucide-react'
 
 const Account = () => {
   const { isSignedIn, user } = useUser()
