@@ -1,4 +1,3 @@
-
 import { useParams } from 'react-router-dom'
 import { Calendar, User, Clock, ArrowLeft, Share2, Heart } from 'lucide-react'
 import { getPostById, getRecentPosts } from '../data/posts'
@@ -136,6 +135,116 @@ const BlogPost = () => {
             </div>
           </section>
         )}
+
+        {/* Comments Section */}
+        <section className="comments-section">
+          <h3>Join the Conversation</h3>
+          <div className="comments-container">
+            {/* Comment Form */}
+            <div className="comment-form-section">
+              <h4>Leave a Comment</h4>
+              <form className="comment-form">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="comment-name" className="form-label">Name *</label>
+                    <input
+                      type="text"
+                      id="comment-name"
+                      name="name"
+                      className="form-input"
+                      placeholder="Your name"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="comment-email" className="form-label">Email *</label>
+                    <input
+                      type="email"
+                      id="comment-email"
+                      name="email"
+                      className="form-input"
+                      placeholder="your@email.com"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="comment-message" className="form-label">Comment *</label>
+                  <textarea
+                    id="comment-message"
+                    name="message"
+                    className="form-textarea"
+                    rows={4}
+                    placeholder="Share your thoughts..."
+                    required
+                  ></textarea>
+                </div>
+                <button type="submit" className="btn btn-primary">
+                  Post Comment
+                </button>
+              </form>
+            </div>
+
+            {/* Comments List */}
+            <div className="comments-list">
+              <h4>Comments (3)</h4>
+              
+              <div className="comment">
+                <div className="comment-avatar">
+                  <div className="avatar-placeholder">SJ</div>
+                </div>
+                <div className="comment-content">
+                  <div className="comment-header">
+                    <h5 className="comment-author">Sarah Johnson</h5>
+                    <span className="comment-date">2 days ago</span>
+                  </div>
+                  <p className="comment-text">
+                    This article really opened my eyes to the importance of foundation layers. 
+                    I never realized how much the right underlayer could impact my confidence 
+                    throughout the day. Thank you for sharing these insights!
+                  </p>
+                  <button className="comment-reply">Reply</button>
+                </div>
+              </div>
+
+              <div className="comment">
+                <div className="comment-avatar">
+                  <div className="avatar-placeholder">MR</div>
+                </div>
+                <div className="comment-content">
+                  <div className="comment-header">
+                    <h5 className="comment-author">Maria Rodriguez</h5>
+                    <span className="comment-date">1 week ago</span>
+                  </div>
+                  <p className="comment-text">
+                    As someone who works in a professional environment, I can't stress enough 
+                    how important it is to have reliable foundation wear. The silver infusion 
+                    technology sounds fascinating - I'd love to try it!
+                  </p>
+                  <button className="comment-reply">Reply</button>
+                </div>
+              </div>
+
+              <div className="comment">
+                <div className="comment-avatar">
+                  <div className="avatar-placeholder">EL</div>
+                </div>
+                <div className="comment-content">
+                  <div className="comment-header">
+                    <h5 className="comment-author">Emily Liu</h5>
+                    <span className="comment-date">2 weeks ago</span>
+                  </div>
+                  <p className="comment-text">
+                    The psychology aspect of wearing white is something I never considered. 
+                    It makes so much sense now why I feel more confident in my white foundation pieces. 
+                    Great article!
+                  </p>
+                  <button className="comment-reply">Reply</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Newsletter CTA */}
         <section className="post-newsletter">
