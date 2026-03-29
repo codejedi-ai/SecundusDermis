@@ -1,13 +1,12 @@
 """
 download_data.py
 ================
-Downloads the Deep Fashion Multimodal dataset from Kaggle when the local
-data/ directory is missing or incomplete.
+Downloads a dataset from Kaggle when the local data/ directory is missing or incomplete.
 
-Dataset:  silverstone1903/deep-fashion-multimodal
+Dataset:  Configurable via KAGGLE_DATASET_SLUG environment variable
 Expected output after extraction:
-  data/labels_front.csv
-  data/selected_images/*.jpg   (~12 k images)
+  data/labels_front.csv (or similar)
+  data/selected_images/*.jpg (or similar structure)
 
 Usage (standalone):
   uv run python download_data.py
@@ -18,6 +17,7 @@ Kaggle credentials — set in backend/.env:
   KAGGLE_API_TOKEN=KGAT_xxxxxxxxxxxxxxxxxxxx   (new token — no username needed)
   -- OR --
   KAGGLE_KEY=your_32char_key + KAGGLE_USERNAME=yourname   (classic API key)
+  KAGGLE_DATASET_SLUG=owner/dataset-name   (optional, defaults to deep-fashion-multimodal)
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-DATASET_SLUG = "silverstone1903/deep-fashion-multimodal"
+# Configurable via environment variable
+DATASET_SLUG = os.getenv("KAGGLE_DATASET_SLUG", "silverstone1903/deep-fashion-multimodal")
 DATA_DIR     = Path(os.getenv("DATASET_ROOT", "./data"))
 LABELS_CSV   = DATA_DIR / "labels_front.csv"
 IMAGES_DIR   = Path(os.getenv("IMAGES_DIR",  "./data/selected_images"))

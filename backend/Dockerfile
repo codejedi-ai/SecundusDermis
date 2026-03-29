@@ -13,23 +13,13 @@ RUN uv sync --no-dev --frozen
 
 COPY . .
 
-# Download full dataset at build time (12,278 products)
-# MAX_ITEMS=0 ensures complete dataset download
-RUN echo "=== Downloading complete DeepFashion dataset (12,278 products) ===" && \
-    MAX_ITEMS=0 uv run python download_data.py && \
-    echo "=== Verifying dataset ===" && \
-    IMG_COUNT=$(ls -1 data/selected_images/*.jpg 2>/dev/null | wc -l) && \
-    echo "Images downloaded: $IMG_COUNT" && \
-    if [ "$IMG_COUNT" -ge 12000 ]; then \
-        echo "✓ Full dataset verified"; \
-    else \
-        echo "⚠ Warning: Expected 12,278 images, got $IMG_COUNT"; \
-    fi
-
-# Ensure data directory has correct permissions for volume mount
-RUN chown -R root:root /app/data && \
+# Ensure data directory exists with correct permissions for volume mount
+RUN mkdir -p /app/data/selected_images && \
+    chown -R root:root /app/data && \
     chmod -R 755 /app/data
 
 EXPOSE 8000
 
+# Dataset is downloaded at runtime by api.py if not present
+# Configure via KAGGLE_* environment variables in docker-compose.yml
 CMD ["uv", "run", "python", "api.py"]
