@@ -4,8 +4,7 @@
 
 .about-hero {
   position: relative;
-  height: 80vh;
-  min-height: 500px;
+  height: calc(100vh - var(--header-height));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,15 +13,17 @@
 .about-hero-image {
   position: absolute;
   inset: 0;
-  /* This acts as a fallback color if the image fails to load */
-  background: var(--color-gray-900); 
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
 
 .about-hero-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -174,7 +175,7 @@
 }
 
 .craft-image {
-  background: linear-gradient(160deg, var(--color-gray-900) 0%, var(--color-gray-800) 100%);
+  background: url('/craft-image.jpeg') top center/cover no-repeat;
 }
 
 .craft-content {
