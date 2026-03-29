@@ -2,64 +2,58 @@
   padding-top: var(--header-height);
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-cream);
-  padding-left: var(--space-6);
-  padding-right: var(--space-6);
+  flex-direction: column;
 }
 
 .auth-split-container {
   display: grid;
   grid-template-columns: 1fr;
   width: 100%;
-  max-width: 1100px;
-  background: var(--color-white);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  flex: 1;
 }
 
 @media (min-width: 900px) {
   .auth-split-container {
     grid-template-columns: 1fr 1fr;
-    min-height: 600px;
+    min-height: calc(100vh - var(--header-height));
   }
 }
 
 /* Left Panel - Description */
 .auth-left {
-  background: linear-gradient(135deg, var(--color-primary) 0%, #2d3748 100%);
+  background: var(--color-primary);
   color: var(--color-white);
-  padding: var(--space-10);
+  padding: clamp(2rem, 5vh, 5rem) clamp(1.5rem, 5vw, 5rem);
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
 }
 
 .auth-left-content {
-  max-width: 420px;
+  max-width: 480px;
+  width: 100%;
 }
 
 .auth-left-title {
   font-family: var(--font-display);
-  font-size: 2.5rem;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
   font-weight: 400;
-  margin-bottom: var(--space-6);
+  margin-bottom: clamp(0.75rem, 2vh, 1.5rem);
   line-height: 1.2;
 }
 
 .auth-left-text {
-  font-size: 1.0625rem;
-  line-height: 1.7;
+  font-size: clamp(0.875rem, 1.2vw, 1rem);
+  line-height: 1.6;
   opacity: 0.9;
-  margin-bottom: var(--space-8);
+  margin-bottom: clamp(1rem, 3vh, 2rem);
 }
 
 .auth-features {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: clamp(0.75rem, 2vh, 1.5rem);
 }
 
 .auth-feature {
@@ -69,7 +63,7 @@
 }
 
 .auth-feature-icon {
-  font-size: 1.75rem;
+  font-size: 1.375rem;
   flex-shrink: 0;
 }
 
@@ -91,43 +85,43 @@
 
 /* Right Panel - Form */
 .auth-right {
-  background: var(--color-white);
-  padding: var(--space-10);
+  background: var(--color-cream);
+  padding: clamp(2rem, 5vh, 5rem) clamp(1.5rem, 5vw, 5rem);
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
 }
 
 .auth-form-wrapper {
   width: 100%;
-  max-width: 400px;
-  margin: 0 auto;
+  max-width: 380px;
 }
 
 .auth-header {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-4);
 }
 
 .auth-title {
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
   font-weight: 400;
   color: var(--color-primary);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .auth-description {
   color: var(--color-gray-600);
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .auth-form {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-3);
 }
 
 .form-group {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-3);
 }
 
 .form-group label {
@@ -142,25 +136,15 @@
 .form-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-5);
-}
-
-@media (min-width: 600px) {
-  .form-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .form-row .form-group:only-child {
-    grid-column: 1 / -1;
-  }
+  gap: 0;
 }
 
 .auth-input {
   width: 100%;
-  padding: var(--space-4);
+  padding: 0.625rem 0.875rem;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
-  font-size: 1rem;
+  border-radius: 0;
+  font-size: 0.9375rem;
   color: var(--color-primary);
   background: var(--color-white);
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -178,12 +162,12 @@
 
 .auth-button-primary {
   width: 100%;
-  padding: var(--space-4);
+  padding: 0.75rem 1rem;
   background: var(--color-primary);
   color: var(--color-white);
   border: none;
-  border-radius: 4px;
-  font-size: 0.875rem;
+  border-radius: 0;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -208,9 +192,9 @@
 .auth-error {
   background: #fee;
   color: #c00;
-  padding: var(--space-3) var(--space-4);
-  border-radius: 4px;
-  margin-bottom: var(--space-6);
+  padding: 0.625rem 0.875rem;
+  border-radius: 0;
+  margin-bottom: var(--space-3);
   font-size: 0.875rem;
   border: 1px solid #fcc;
 }
@@ -255,22 +239,18 @@
 
 /* Mobile adjustments */
 @media (max-width: 600px) {
-  .auth-split-container {
-    border-radius: 8px;
-  }
-  
   .auth-left {
-    padding: var(--space-8);
+    padding: var(--space-6) var(--space-4);
   }
-  
+
   .auth-left-title {
     font-size: 1.75rem;
   }
-  
+
   .auth-right {
-    padding: var(--space-6);
+    padding: var(--space-6) var(--space-4);
   }
-  
+
   .auth-title {
     font-size: 1.5rem;
   }

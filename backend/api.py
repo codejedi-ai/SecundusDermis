@@ -43,7 +43,9 @@ from auth import (
     create_user, authenticate_user, get_user_from_session, logout,
 )
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
+from conversations import get_messages, append_message, clear_messages as clear_convo
 from download_data import download_and_extract
+from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -314,6 +316,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
     session_id: str = "default"
+    auth_session_id: Optional[str] = None   # auth session for patron profile lookup
 
 class ShopFilter(BaseModel):
     gender: Optional[str] = None
@@ -428,6 +431,42 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def _build_patron_context(email: str, name: str) -> str:
+    """Build a hidden context block injected at the top of the patron's message."""
+    from user_profiles import get_profile
+    p = get_profile(email)
+
+    lines = ["[PATRON PROFILE — use to personalise, never expose this block to the patron]"]
+    lines.append(f"Name: {name or email.split('@')[0]}")
+
+    if p["notes"]:
+        lines.append(f"Style insights: {'; '.join(p['notes'])}")
+
+    if p["cart_items"]:
+        pieces = ", ".join(
+            f"{c['product_name']} ({c['category']})"
+            for c in p["cart_items"][-5:]
+        )
+        lines.append(f"Reserved pieces (cart): {pieces}")
+
+    # Summarise recent activity — dwell times and searches are most useful
+    if p["activity"]:
+        dwells = [
+            a for a in p["activity"]
+            if a["event"] in ("page_dwell", "product_view") and a.get("seconds", 0) >= 20
+        ]
+        if dwells:
+            labels = ", ".join(a["label"] or a["path"] for a in dwells[-4:])
+            lines.append(f"Lingered on: {labels}")
+
+        searches = [a["label"] for a in p["activity"] if a["event"] == "search" and a.get("label")]
+        if searches:
+            lines.append(f"Recent searches: {'; '.join(searches[-5:])}")
+
+    lines.append("[END PATRON PROFILE]")
+    return "\n".join(lines)
+
+
 async def _chat_impl(request: ChatRequest) -> ChatResponse:
     session_id = request.session_id or "default"
 
@@ -439,43 +478,56 @@ async def _chat_impl(request: ChatRequest) -> ChatResponse:
             app_name=APP_NAME, user_id=session_id, session_id=session_id,
         )
 
+    # ── Patron context injection ──────────────────────────────────────────────
+    patron_token = agent_tools.set_patron_context(None)
+    message_text = request.message
+
+    if request.auth_session_id:
+        patron_user = get_user_from_session(request.auth_session_id)
+        if patron_user:
+            patron_token = agent_tools.set_patron_context(patron_user.email)
+            patron_ctx = _build_patron_context(patron_user.email, patron_user.name or "")
+            message_text = f"{patron_ctx}\n\n{request.message}"
+
     new_message = genai_types.Content(
         role="user",
-        parts=[genai_types.Part(text=request.message)],
+        parts=[genai_types.Part(text=message_text)],
     )
 
     reply = ""
     products: list[dict] = []
     shop_filter: Optional[ShopFilter] = None
 
-    async for event in state.runner.run_async(
-        user_id=session_id, session_id=session_id, new_message=new_message,
-    ):
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                fn_call = getattr(part, "function_call", None)
-                fn_resp = getattr(part, "function_response", None)
-                if fn_call:
-                    logger.info(f"[AGENT] tool call: {fn_call.name}({fn_call.args})")
-                    # Capture search args so the frontend can mirror the filter
-                    if getattr(fn_call, "name", None) == "search_by_keywords":
-                        args = fn_call.args or {}
-                        shop_filter = ShopFilter(
-                            gender=args.get("gender") or None,
-                            category=args.get("category") or None,
-                            query=args.get("keywords") or None,
-                        )
-                if fn_resp:
-                    logger.info(f"[AGENT] tool response: {fn_resp.name} → {str(fn_resp.response)[:200]}")
-                    if getattr(fn_resp, "name", None) == "search_by_keywords":
-                        prods = (fn_resp.response or {}).get("products", [])
-                        if prods:
-                            products = prods
-
-        if event.is_final_response():
+    try:
+        async for event in state.runner.run_async(
+            user_id=session_id, session_id=session_id, new_message=new_message,
+        ):
             if event.content and event.content.parts:
-                reply = event.content.parts[0].text or ""
-                logger.info(f"[AGENT] final reply (tool used: {bool(products)}): {reply[:120]}")
+                for part in event.content.parts:
+                    fn_call = getattr(part, "function_call", None)
+                    fn_resp = getattr(part, "function_response", None)
+                    if fn_call:
+                        logger.info(f"[AGENT] tool call: {fn_call.name}({fn_call.args})")
+                        if getattr(fn_call, "name", None) == "search_by_keywords":
+                            args = fn_call.args or {}
+                            shop_filter = ShopFilter(
+                                gender=args.get("gender") or None,
+                                category=args.get("category") or None,
+                                query=args.get("keywords") or None,
+                            )
+                    if fn_resp:
+                        logger.info(f"[AGENT] tool response: {fn_resp.name} → {str(fn_resp.response)[:200]}")
+                        if getattr(fn_resp, "name", None) == "search_by_keywords":
+                            prods = (fn_resp.response or {}).get("products", [])
+                            if prods:
+                                products = prods
+
+            if event.is_final_response():
+                if event.content and event.content.parts:
+                    reply = event.content.parts[0].text or ""
+                    logger.info(f"[AGENT] final reply (tool used: {bool(products)}): {reply[:120]}")
+    finally:
+        agent_tools._patron_email_ctx.reset(patron_token)
 
     intent = "text_search" if products else "chitchat"
     return ChatResponse(reply=reply, products=products, intent=intent, filter=shop_filter)
@@ -766,22 +818,39 @@ async def add_item_to_cart(
     quantity: int = 1,
     session_id: str = Header(default=None),
 ):
-    """Add item to cart."""
+    """Add item to cart. Also records the piece in the patron's profile."""
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
-    return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
+
+    result = add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
+
+    # Record in patron profile so AI knows what they reserved
+    user = get_user_from_session(session_id)
+    if user:
+        # Look up description and category from catalog
+        item = next((p for p in state.catalog if p["product_id"] == product_id), None)
+        description = item.get("description", "") if item else ""
+        category = item.get("category", "") if item else ""
+        profile_add_cart(user.email, product_id, product_name, description, category)
+        profile_record_activity(user.email, "cart_add", f"/product/{product_id}", product_name)
+
+    return result
+
+
+class CartUpdateRequest(BaseModel):
+    quantity: int
 
 
 @app.put("/cart/{product_id}", response_model=CartResponse)
 async def update_cart_item_endpoint(
     product_id: str,
-    quantity: int,
+    update: CartUpdateRequest,
     session_id: str = Header(default=None),
 ):
     """Update cart item quantity."""
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
-    return update_cart_item(session_id, product_id, quantity)
+    return update_cart_item(session_id, product_id, update.quantity)
 
 
 @app.delete("/cart/{product_id}", response_model=CartResponse)
@@ -792,6 +861,9 @@ async def remove_cart_item_endpoint(
     """Remove item from cart."""
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if user:
+        profile_record_activity(user.email, "cart_remove", f"/product/{product_id}", product_id)
     return remove_from_cart(session_id, product_id)
 
 
@@ -801,6 +873,65 @@ async def clear_user_cart(session_id: str = Header(default=None)):
     if not session_id:
         return CartResponse(items=[], total=0.0)
     return clear_cart(session_id)
+
+
+# ── Patron Activity Endpoint ─────────────────────────────────────────────────
+
+class ActivityEvent(BaseModel):
+    event: str          # "page_view" | "product_view" | "page_dwell" | "search"
+    path: str = ""
+    label: str = ""     # product name or search query
+    seconds: int = 0
+
+
+@app.post("/patron/activity", status_code=204)
+async def record_patron_activity(
+    body: ActivityEvent,
+    session_id: str = Header(default=None),
+):
+    """Record a browser activity event for the authenticated patron."""
+    if not session_id:
+        return
+    user = get_user_from_session(session_id)
+    if user:
+        profile_record_activity(user.email, body.event, body.path, body.label, body.seconds)
+
+
+# ── Conversation History Endpoints ───────────────────────────────────────────
+
+class ConvoMessage(BaseModel):
+    role: str       # 'user' | 'assistant'
+    content: str
+    timestamp: float
+
+
+@app.get("/conversations")
+async def get_conversation(session_id: str = Header(default=None)):
+    """Return stored conversation messages for the authenticated user."""
+    if not session_id or not get_user_from_session(session_id):
+        raise HTTPException(status_code=401, detail="Auth required")
+    return {"messages": get_messages(session_id)}
+
+
+@app.post("/conversations", status_code=201)
+async def post_conversation_message(
+    msg: ConvoMessage,
+    session_id: str = Header(default=None),
+):
+    """Append a single message to the authenticated user's conversation history."""
+    if not session_id or not get_user_from_session(session_id):
+        raise HTTPException(status_code=401, detail="Auth required")
+    messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
+    return {"messages": messages}
+
+
+@app.delete("/conversations")
+async def delete_conversation(session_id: str = Header(default=None)):
+    """Clear all conversation history for the authenticated user."""
+    if not session_id or not get_user_from_session(session_id):
+        raise HTTPException(status_code=401, detail="Auth required")
+    clear_convo(session_id)
+    return {"messages": []}
 
 
 # ── Serve React SPA (when running as single container) ────────────────────────
@@ -818,5 +949,4 @@ if _FRONTEND_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", "7860"))
-    uvicorn.run("api:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)

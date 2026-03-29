@@ -4,39 +4,27 @@ import ReactMarkdown from 'react-markdown';
 import { ImagePlus, Loader2, MessageCircle, Send, X } from 'lucide-react';
 import * as fashionApi from '../services/fashionApi';
 import { useShop } from '../lib/shop-context';
+import { useConvo } from '../lib/convo-context';
+import { useAuth } from '../lib/auth-context';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  products?: fashionApi.Product[];
-  previewUrl?: string; // object URL for uploaded images
-}
-
-const FALLBACK_IMAGE =
-  '/img/photo-6311392.jpg';
-
-const INITIAL_MESSAGE: Message = {
-  id: 'init',
-  role: 'assistant',
-  content:
-    "Welcome to Secundus Dermis. I am your personal attache.\n\nShall we begin with your preferred aesthetic, or would you like me to curate a selection from the archive? You may also present an image and I will identify pieces that harmonize with your vision.",
-};
+const FALLBACK_IMAGE = '/img/photo-6311392.jpg';
 
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function ChatWidget() {
+  const { messages, chatSessionId, addMessage } = useConvo();
+  const { session } = useAuth();
+  const authSessionId = session?.session_id;
+
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const sessionId = useRef(crypto.randomUUID());
 
   const { setGender, setCategory, setQuery, setInputValue } = useShop();
   const navigate = useNavigate();
@@ -60,21 +48,6 @@ export default function ChatWidget() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Build history for the /chat endpoint (last 10 turns, no product metadata)
-  function buildHistory(): fashionApi.ChatMessage[] {
-    return messages
-      .filter((m) => m.id !== 'init')
-      .slice(-10)
-      .map((m) => ({ role: m.role, content: m.content }));
-  }
-
-  function addMessage(msg: Omit<Message, 'id'>) {
-    setMessages((prev) => [
-      ...prev,
-      { ...msg, id: crypto.randomUUID() },
-    ]);
-  }
-
   // ── Text send ────────────────────────────────────────────────────────────
 
   async function handleSend() {
@@ -84,13 +57,11 @@ export default function ChatWidget() {
     addMessage({ role: 'user', content: text });
     setLoading(true);
     try {
-      const res = await fashionApi.chat(text, buildHistory(), sessionId.current);
+      const res = await fashionApi.chat(text, [], chatSessionId, authSessionId);
       addMessage({ role: 'assistant', content: res.reply, products: res.products });
 
       // If the AI returned products, mirror its filters into the sidebar
       if (res.products && res.products.length > 0) {
-        // Explicit args from the agent's tool call take priority;
-        // fall back to what's dominant in the actual results
         const newGender   = res.filter?.gender   || dominant(res.products.map(p => p.gender));
         const newCategory = res.filter?.category || dominant(res.products.map(p => p.category));
         const newQuery    = res.filter?.query    || '';
@@ -103,8 +74,7 @@ export default function ChatWidget() {
     } catch {
       addMessage({
         role: 'assistant',
-        content:
-          'Could not reach the server. Make sure the backend is running on port 8000.',
+        content: 'Could not reach the server. Make sure the backend is running.',
       });
     } finally {
       setLoading(false);
@@ -116,11 +86,7 @@ export default function ChatWidget() {
   async function handleImageFile(file: File) {
     if (loading) return;
     const previewUrl = URL.createObjectURL(file);
-    addMessage({
-      role: 'user',
-      content: `Searching by image: ${file.name}`,
-      previewUrl,
-    });
+    addMessage({ role: 'user', content: `Searching by image: ${file.name}`, previewUrl });
     setLoading(true);
     try {
       const res = await fashionApi.searchImage(file);

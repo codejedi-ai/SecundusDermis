@@ -1,41 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react' // useEffect kept for scroll + search flash
 import { Link, useNavigate } from 'react-router-dom'
 import { Menu, Search, X, ShoppingCart, User } from 'lucide-react'
 import { useShop } from '../lib/shop-context'
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860'
+import { useAuth } from '../lib/auth-context'
+import { useCart } from '../lib/cart-context'
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
-  const [user, setUser] = useState<{ email: string; name: string } | null>(null)
-  const [cartCount, setCartCount] = useState(0)
 
+  const { user } = useAuth()
+  const { cartCount } = useCart()
   const { inputValue, setInputValue, setQuery } = useShop()
   const navigate = useNavigate()
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevInputRef = useRef(inputValue)
   const [aiFlash, setAiFlash] = useState(false)
-
-  // Load user and cart on mount
-  useEffect(() => {
-    const sessionId = localStorage.getItem('session_id')
-    if (sessionId) {
-      fetch(`${API_BASE}/auth/me`, {
-        headers: { 'session_id': sessionId }
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(u => { if (u) setUser(u) })
-        .catch(() => {})
-      
-      fetch(`${API_BASE}/cart`, {
-        headers: { 'session_id': sessionId }
-      })
-        .then(r => r.ok ? r.json() : { items: [] })
-        .then(c => setCartCount(c.items.reduce((n: number, i: any) => n + i.quantity, 0)))
-        .catch(() => {})
-    }
-  }, [])
 
   // Flash the search bar when the AI updates inputValue externally
   useEffect(() => {

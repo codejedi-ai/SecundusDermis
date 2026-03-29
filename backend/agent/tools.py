@@ -9,6 +9,7 @@ All search is pure Python keyword matching — zero Gemini API calls.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from typing import Optional
 
@@ -18,6 +19,17 @@ log = logging.getLogger(__name__)
 
 _catalog: list[dict] = []
 _journal: list[dict] = []
+
+# ── Patron context (set per-request via set_patron_context) ───────────────────
+
+_patron_email_ctx: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "patron_email", default=None
+)
+
+
+def set_patron_context(email: Optional[str]) -> contextvars.Token:
+    """Set the current patron's email for this async context. Returns a reset token."""
+    return _patron_email_ctx.set(email)
 
 
 def init_tools(catalog: list[dict], journal: list[dict] = None, **_kwargs):
@@ -158,3 +170,60 @@ def get_product_categories() -> dict:
         "categories": stats["categories"],
         "genders":    stats["genders"],
     }
+
+
+def get_patron_profile() -> dict:
+    """
+    Retrieve the current patron's profile: their style notes, reserved pieces
+    (cart history), and recent browser activity (pages visited, products viewed,
+    searches, dwell times). Call this at the start of any conversation with a
+    logged-in patron to personalise your response — address them by name, reference
+    pieces they've reserved, and note what they've been browsing.
+
+    Returns a dict with keys:
+      email       — patron email
+      notes       — list of AI-extracted style insight strings
+      cart_items  — list of {product_name, category, description} they've reserved
+      activity    — list of recent {event, path, label, seconds} browser actions
+    """
+    try:
+        from user_profiles import get_profile as _get_profile
+        email = _patron_email_ctx.get()
+        if not email:
+            return {"email": None, "notes": [], "cart_items": [], "activity": []}
+        return _get_profile(email)
+    except Exception as exc:
+        log.error(f"get_patron_profile error: {exc}")
+        return {"email": None, "notes": [], "cart_items": [], "activity": []}
+
+
+def save_patron_note(note: str) -> dict:
+    """
+    Save a concise insight about the patron's style, preferences, or aesthetic
+    discovered during conversation or inferred from their browsing behaviour.
+
+    Call this whenever the patron reveals something meaningful:
+      - Preferred palette or textures ("gravitates toward earth tones")
+      - Silhouette or fit preferences ("prefers relaxed, oversized silhouettes")
+      - Occasion dressing ("shops primarily for business-casual environments")
+      - Lifestyle signals ("mentioned travelling frequently, values versatility")
+      - Fabric preferences ("avoids synthetic textiles, prefers natural fibres")
+      - Things they dislike ("not interested in graphic prints")
+
+    Notes are stored and surfaced in future sessions via get_patron_profile.
+
+    Args:
+        note: A concise, third-person insight. E.g. "Prefers structured, minimalist pieces."
+
+    Returns:
+        {"saved": true} on success.
+    """
+    try:
+        from user_profiles import add_note as _add_note
+        email = _patron_email_ctx.get()
+        if email and note:
+            _add_note(email, note.strip())
+        return {"saved": True}
+    except Exception as exc:
+        log.error(f"save_patron_note error: {exc}")
+        return {"saved": False, "error": str(exc)}

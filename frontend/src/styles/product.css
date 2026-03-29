@@ -559,3 +559,60 @@ a.shop-card:hover .shop-card-img img {
   transform: scale(1.03);
   transition: transform 0.3s ease;
 }
+
+/* ── Add to Cart / Reserve button ─────────────────────────────────── */
+.product-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.75rem;
+  background: var(--color-black, #111);
+  color: #fff;
+  border: none;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: 100%;
+  justify-content: center;
+}
+
+.product-add-btn:hover:not(:disabled) {
+  background: #333;
+}
+
+.product-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.product-add-btn--done {
+  background: #2d6a4f;
+}
+
+.product-cart-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.product-view-cart-link {
+  font-size: 0.8rem;
+  color: var(--color-gray-500, #888);
+  text-decoration: underline;
+}
+
+.product-signin-hint {
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--color-gray-500, #888);
+}
+
+.product-signin-hint a {
+  color: inherit;
+  text-decoration: underline;
+}

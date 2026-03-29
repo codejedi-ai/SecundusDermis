@@ -17,6 +17,9 @@ import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom
 import './index.css'
 import { ShopProvider } from './lib/shop-context'
 import { AuthProvider } from './lib/auth-context'
+import { ConvoProvider } from './lib/convo-context'
+import { CartProvider } from './lib/cart-context'
+import { MonitorProvider } from './lib/monitor-context'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import ShopSidebar from './components/ShopSidebar'
@@ -54,8 +57,11 @@ function ShopLayout() {
 function App() {
   return (
     <AuthProvider>
+      <ConvoProvider>
+      <CartProvider>
       <ShopProvider>
         <Router>
+          <MonitorProvider>
           <ScrollToTop />
           <div className="app">
             <Header />
@@ -84,8 +90,11 @@ function App() {
             <Footer />
             <ChatWidget />
           </div>
+          </MonitorProvider>
         </Router>
       </ShopProvider>
+      </CartProvider>
+      </ConvoProvider>
     </AuthProvider>
   )
 }

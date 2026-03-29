@@ -1,16 +1,27 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ArrowLeft, ShoppingBag, Check } from 'lucide-react'
 import * as fashionApi from '../services/fashionApi'
+import { useCart } from '../lib/cart-context'
+import { useAuth } from '../lib/auth-context'
 
 const FALLBACK = '/img/photo-6311392.jpg'
 
 export default function Product() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { session } = useAuth()
+  const { addToCart, cart } = useCart()
+
   const [product, setProduct] = useState<fashionApi.Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState(false)
+
+  const alreadyInCart = product
+    ? cart.items.some(i => i.product_id === product.product_id)
+    : false
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -19,11 +30,32 @@ export default function Product() {
   useEffect(() => {
     if (!id) return
     setLoading(true)
+    setAdded(false)
     fashionApi.getProduct(id)
-      .then(p => setProduct(p as fashionApi.Product))
+      .then(p => {
+        setProduct(p as fashionApi.Product)
+        // Set document title so monitor-context can capture the product name
+        document.title = (p as fashionApi.Product).product_name
+      })
       .catch(() => setError('Product not found.'))
       .finally(() => setLoading(false))
   }, [id])
+
+  const handleAddToCart = async () => {
+    if (!product || !session) return
+    setAdding(true)
+    try {
+      await addToCart({
+        product_id:   product.product_id,
+        product_name: product.product_name,
+        price:        product.price,
+        image_url:    product.image_url,
+      })
+      setAdded(true)
+    } finally {
+      setAdding(false)
+    }
+  }
 
   if (loading) return (
     <div className="product-loading">
@@ -77,6 +109,34 @@ export default function Product() {
         <p className="product-price">${product.price.toFixed(2)}</p>
 
         <p className="product-description">{product.description || 'No description available.'}</p>
+
+        {/* ── Add to Cart ──────────────────────────────────────── */}
+        {session ? (
+          alreadyInCart || added ? (
+            <div className="product-cart-actions">
+              <button className="product-add-btn product-add-btn--done" disabled>
+                <Check size={16} />
+                Reserved
+              </button>
+              <Link to="/cart" className="product-view-cart-link">
+                View your portfolio →
+              </Link>
+            </div>
+          ) : (
+            <button
+              className="product-add-btn"
+              onClick={handleAddToCart}
+              disabled={adding}
+            >
+              <ShoppingBag size={16} />
+              {adding ? 'Reserving…' : 'Reserve this Piece'}
+            </button>
+          )
+        ) : (
+          <p className="product-signin-hint">
+            <Link to="/sign-in">Sign in</Link> to reserve this piece.
+          </p>
+        )}
       </div>
     </div>
   )

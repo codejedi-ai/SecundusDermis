@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import './auth.css';
 
 const SignUp = () => {
   const [email, setEmail] = useState('');
@@ -10,7 +9,7 @@ const SignUp = () => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signUp } = useAuth();
+  const { signUp, signIn } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,7 +30,8 @@ const SignUp = () => {
 
     try {
       await signUp(email, password, name || undefined);
-      navigate('/sign-in');
+      await signIn(email, password);
+      navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign up');
     } finally {

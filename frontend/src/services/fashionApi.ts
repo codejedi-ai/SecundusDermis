@@ -74,11 +74,17 @@ export function chat(
   message: string,
   history: ChatMessage[] = [],
   sessionId?: string,
+  authSessionId?: string,
 ): Promise<ChatResponse> {
   return request('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history, session_id: sessionId ?? 'default' }),
+    body: JSON.stringify({
+      message,
+      history,
+      session_id: sessionId ?? 'default',
+      auth_session_id: authSessionId ?? null,
+    }),
   });
 }
 
@@ -191,6 +197,112 @@ export function createJournalPost(post: NewJournalPost, adminKey: string): Promi
     headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
     body: JSON.stringify(post),
   });
+}
+
+// ── Cart ──────────────────────────────────────────────────────────────────
+
+export interface CartItem {
+  product_id: string;
+  product_name: string;
+  price: number;
+  image_url: string;
+  quantity: number;
+}
+
+export interface CartResponse {
+  items: CartItem[];
+  total: number;
+}
+
+export function getCart(sessionId: string): Promise<CartResponse> {
+  return request('/cart', { headers: { session_id: sessionId } });
+}
+
+export function addToCart(
+  sessionId: string,
+  item: { product_id: string; product_name: string; price: number; image_url: string; quantity?: number },
+): Promise<CartResponse> {
+  const params = new URLSearchParams({
+    product_id:   item.product_id,
+    product_name: item.product_name,
+    price:        String(item.price),
+    image_url:    item.image_url,
+    quantity:     String(item.quantity ?? 1),
+  });
+  return request(`/cart?${params}`, {
+    method: 'POST',
+    headers: { session_id: sessionId },
+  });
+}
+
+export function updateCartItem(
+  sessionId: string,
+  productId: string,
+  quantity: number,
+): Promise<CartResponse> {
+  return request(`/cart/${productId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    body: JSON.stringify({ quantity }),
+  });
+}
+
+export function removeCartItem(sessionId: string, productId: string): Promise<CartResponse> {
+  return request(`/cart/${productId}`, {
+    method: 'DELETE',
+    headers: { session_id: sessionId },
+  });
+}
+
+// ── Patron activity ────────────────────────────────────────────────────────
+
+export function recordActivity(
+  sessionId: string,
+  event: 'page_view' | 'product_view' | 'page_dwell' | 'search',
+  path: string,
+  label = '',
+  seconds = 0,
+): Promise<void> {
+  return request('/patron/activity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    body: JSON.stringify({ event, path, label, seconds }),
+  }).then(() => undefined).catch(() => undefined); // best-effort, never throw
+}
+
+// ── Conversation history ───────────────────────────────────────────────────
+
+export interface StoredMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+/** Fetch all stored messages for the current session (requires auth). */
+export function getConversation(sessionId: string): Promise<StoredMessage[]> {
+  return request<{ messages: StoredMessage[] }>('/conversations', {
+    headers: { session_id: sessionId },
+  }).then(r => r.messages ?? []);
+}
+
+/** Append one message to the server-side history (requires auth). */
+export function appendConversationMessage(
+  sessionId: string,
+  msg: StoredMessage,
+): Promise<void> {
+  return request('/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    body: JSON.stringify(msg),
+  }).then(() => undefined);
+}
+
+/** Clear the entire conversation history for this session (requires auth). */
+export function clearConversation(sessionId: string): Promise<void> {
+  return request('/conversations', {
+    method: 'DELETE',
+    headers: { session_id: sessionId },
+  }).then(() => undefined);
 }
 
 /** Returns true if the backend is reachable. */

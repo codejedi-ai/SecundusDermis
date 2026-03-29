@@ -1,109 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ShoppingBag, Plus, Minus, Trash2, ArrowLeft } from 'lucide-react'
-import './auth.css'
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860'
-
-interface CartItem {
-  product_id: string
-  product_name: string
-  price: number
-  image_url: string
-  quantity: number
-}
-
-interface CartResponse {
-  items: CartItem[]
-  total: number
-}
+import { useCart } from '../lib/cart-context'
+import { useAuth } from '../lib/auth-context'
 
 const Cart = () => {
-  const [cart, setCart] = useState<CartResponse>({ items: [], total: 0 })
-  const [isLoading, setIsLoading] = useState(true)
-  const [isUpdating, setIsUpdating] = useState<string | null>(null)
+  const { cart, removeFromCart, updateQuantity } = useCart()
+  const { session } = useAuth()
+  const [updating, setUpdating] = useState<string | null>(null)
 
-  const getSessionId = () => localStorage.getItem('sd_session_id')
-
-  useEffect(() => {
-    fetchCart()
-  }, [])
-
-  const fetchCart = async () => {
-    const sessionId = getSessionId()
-    if (!sessionId) {
-      setCart({ items: [], total: 0 })
-      setIsLoading(false)
-      return
-    }
+  const handleUpdate = async (productId: string, quantity: number) => {
+    setUpdating(productId)
     try {
-      const res = await fetch(`${API_BASE}/cart`, {
-        headers: { 'session_id': sessionId }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCart(data)
-      }
-    } catch (e) {
-      console.error('Failed to fetch cart', e)
-    }
-    setIsLoading(false)
-  }
-
-  const updateQuantity = async (productId: string, quantity: number) => {
-    const sessionId = getSessionId()
-    if (!sessionId) return
-    
-    setIsUpdating(productId)
-    try {
-      const res = await fetch(`${API_BASE}/cart/${productId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'session_id': sessionId
-        },
-        body: JSON.stringify({ quantity })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCart(data)
-      }
-    } catch (e) {
-      console.error('Failed to update cart', e)
-    }
-    setIsUpdating(null)
-  }
-
-  const removeItem = async (productId: string) => {
-    const sessionId = getSessionId()
-    if (!sessionId) return
-    
-    try {
-      const res = await fetch(`${API_BASE}/cart/${productId}`, {
-        method: 'DELETE',
-        headers: { 'session_id': sessionId }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCart(data)
-      }
-    } catch (e) {
-      console.error('Failed to remove item', e)
+      await updateQuantity(productId, quantity)
+    } finally {
+      setUpdating(null)
     }
   }
 
-  const shipping = cart.total > 75 ? 0 : 8.95
+  const shipping   = cart.total > 75 ? 0 : 8.95
   const grandTotal = cart.total + shipping
-
-  if (isLoading) {
-    return (
-      <div className="cart-page">
-        <div className="container">
-          <p>Loading cart...</p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="cart-page">
@@ -111,18 +27,25 @@ const Cart = () => {
         <div className="cart-header">
           <Link to="/shop" className="back-link">
             <ArrowLeft size={20} />
-            Continue Shopping
+            Continue Browsing
           </Link>
-          <h1 className="page-title">Shopping Cart</h1>
+          <h1 className="page-title">Your Portfolio</h1>
           <p className="page-description">
-            Review your items and proceed to checkout when ready.
+            Review your reserved pieces and finalise your commission.
           </p>
         </div>
 
-        {cart.items.length > 0 ? (
+        {!session ? (
+          <div className="cart-empty">
+            <ShoppingBag size={64} strokeWidth={1} />
+            <h2>Sign in to view your portfolio</h2>
+            <p>Your reserved pieces are saved to your patron account.</p>
+            <Link to="/sign-in" className="shop-now-btn">Sign In</Link>
+          </div>
+        ) : cart.items.length > 0 ? (
           <div className="cart-content">
             <div className="cart-items">
-              <h2 className="section-title">Your Items ({cart.items.length})</h2>
+              <h2 className="section-title">Reserved Pieces ({cart.items.length})</h2>
               {cart.items.map((item) => (
                 <div key={item.product_id} className="cart-item">
                   <div className="cart-item-image">
@@ -135,16 +58,16 @@ const Cart = () => {
                   <div className="cart-item-quantity">
                     <button
                       className="qty-btn"
-                      onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
-                      disabled={isUpdating === item.product_id || item.quantity <= 1}
+                      onClick={() => handleUpdate(item.product_id, item.quantity - 1)}
+                      disabled={updating === item.product_id || item.quantity <= 1}
                     >
                       <Minus size={16} />
                     </button>
                     <span className="qty-value">{item.quantity}</span>
                     <button
                       className="qty-btn"
-                      onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
-                      disabled={isUpdating === item.product_id}
+                      onClick={() => handleUpdate(item.product_id, item.quantity + 1)}
+                      disabled={updating === item.product_id}
                     >
                       <Plus size={16} />
                     </button>
@@ -154,8 +77,8 @@ const Cart = () => {
                   </div>
                   <button
                     className="cart-item-remove"
-                    onClick={() => removeItem(item.product_id)}
-                    disabled={isUpdating === item.product_id}
+                    onClick={() => removeFromCart(item.product_id)}
+                    disabled={updating === item.product_id}
                   >
                     <Trash2 size={18} />
                   </button>
@@ -164,42 +87,37 @@ const Cart = () => {
             </div>
 
             <div className="cart-summary">
-              <h2 className="summary-title">Order Summary</h2>
+              <h2 className="summary-title">Commission Summary</h2>
               <div className="summary-row">
                 <span>Subtotal</span>
                 <span>${cart.total.toFixed(2)}</span>
               </div>
               <div className="summary-row">
-                <span>Shipping</span>
-                <span>{shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`}</span>
+                <span>Delivery</span>
+                <span>{shipping === 0 ? 'Complimentary' : `$${shipping.toFixed(2)}`}</span>
               </div>
               {shipping > 0 && (
                 <p className="free-shipping-hint">
-                  Add ${(75 - cart.total).toFixed(2)} more for free shipping!
+                  Add ${(75 - cart.total).toFixed(2)} more for complimentary delivery.
                 </p>
               )}
               <div className="summary-row summary-total">
-                <span>Total</span>
+                <span>Total Investment</span>
                 <span>${grandTotal.toFixed(2)}</span>
               </div>
-              <button className="checkout-btn" disabled={!getSessionId()}>
+              <button className="checkout-btn">
                 <ShoppingBag size={18} />
-                Checkout
+                Finalise Commission
               </button>
-              {!getSessionId() && (
-                <p className="login-hint">
-                  <Link to="/sign-in">Sign in</Link> to checkout
-                </p>
-              )}
             </div>
           </div>
         ) : (
           <div className="cart-empty">
             <ShoppingBag size={64} strokeWidth={1} />
-            <h2>Your cart is empty</h2>
-            <p>Looks like you haven't added anything to your cart yet.</p>
+            <h2>Your portfolio is empty</h2>
+            <p>Allow me to curate a selection for you.</p>
             <Link to="/shop" className="shop-now-btn">
-              Start Shopping
+              Explore the Archive
             </Link>
           </div>
         )}
