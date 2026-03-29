@@ -381,18 +381,25 @@ def keyword_search(
 # ── VLM image description ─────────────────────────────────────────────────────
 
 async def vlm_describe_image(image_bytes: bytes, mime_type: str) -> str:
-    """Use Gemini VLM to extract clothing search keywords from an uploaded image."""
+    """
+    Use Gemini VLM to generate a rich textual description of the garment in
+    the uploaded image. The description is used directly as the text search
+    query against the catalog.
+    """
     try:
         resp = state.gemini.models.generate_content(
             model=VLM_MODEL,
             contents=[
                 genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 genai_types.Part.from_text(
-                    "You are analysing a fashion item image for a clothing search engine. "
-                    "Output ONLY a comma-separated list of keywords describing: "
-                    "garment type, dominant colors, patterns, fabric, and style. "
-                    "Example: dress, floral, blue, cotton, short-sleeve, casual. "
-                    "No sentences. Keywords only."
+                    "Describe this clothing item for a fashion catalog text search. "
+                    "Include: garment type, dominant colours, any pattern or print, "
+                    "fabric or texture if visible, sleeve length, fit (loose/slim/relaxed), "
+                    "and overall style (casual/formal/athletic/bohemian etc.). "
+                    "Write ONE descriptive sentence in plain English using the same "
+                    "vocabulary a fashion catalog would use. "
+                    "Example: 'A slim-fit navy blue cotton long-sleeve shirt with a "
+                    "subtle plaid pattern and a button-down collar.'"
                 ),
             ],
         )
@@ -550,6 +557,50 @@ async def search_text(request: TextSearchRequest):
     )
 
 
+_STOP_WORDS = {
+    "a", "an", "the", "with", "and", "or", "of", "in", "on", "for",
+    "is", "are", "has", "its", "that", "this", "it", "at", "by",
+}
+
+
+def _text_score_candidates(
+    description: str,
+    gender: Optional[str],
+    category: Optional[str],
+    pool_size: int,
+) -> list[dict]:
+    """
+    Score every catalog item by how many terms from `description` appear in
+    its text fields. Returns items sorted by match count descending.
+    """
+    raw_terms = re.split(r"[\s,.\-/()]+", description.lower())
+    terms = [t for t in raw_terms if len(t) > 2 and t not in _STOP_WORDS]
+
+    if not terms:
+        # No meaningful terms — return a broad filter slice
+        return keyword_search("", gender=gender, category=category, n_results=pool_size)
+
+    scored: dict[str, tuple[int, dict]] = {}
+    for item in state.catalog:
+        if gender and item["gender"] != gender.upper():
+            continue
+        if category and item["category"] != category:
+            continue
+        searchable = (
+            item.get("description", "").lower()
+            + " "
+            + item.get("product_name", "").lower()
+        )
+        match_count = sum(1 for t in terms if t in searchable)
+        if match_count > 0:
+            pid = item["product_id"]
+            if pid not in scored or match_count > scored[pid][0]:
+                scored[pid] = (match_count, item)
+
+    sorted_items = sorted(scored.values(), key=lambda x: x[0], reverse=True)
+    return [item for _, item in sorted_items[:pool_size]]
+
+
 @app.post("/search/image", response_model=SearchResponse)
 async def search_image(
     file: UploadFile = File(...),
@@ -562,54 +613,45 @@ async def search_image(
 
     image_bytes = await file.read()
 
-    # Step 1 — VLM: extract clothing keywords from the image
-    vlm_keywords = await vlm_describe_image(image_bytes, mime_type=file.content_type)
-    logger.info(f"VLM keywords for {file.filename!r}: {vlm_keywords!r}")
+    # ── Step 1: VLM → rich textual description ────────────────────────────────
+    vlm_description = await vlm_describe_image(image_bytes, mime_type=file.content_type)
+    logger.info(f"VLM description for {file.filename!r}: {vlm_description!r}")
 
-    # Step 2 — Keyword search using VLM description
-    # Split VLM output into individual keywords and search each
-    search_terms = [kw.strip() for kw in vlm_keywords.replace(",", " ").split() if len(kw.strip()) > 2]
-    candidates: list[dict] = []
-    seen_ids: set = set()
+    # ── Step 2: Text search — score catalog by VLM description term matches ───
+    # Generous pool so the histogram re-ranker has enough to work with.
+    pool_size = max(n_results * 6, 48)
+    candidates = _text_score_candidates(vlm_description, gender, category, pool_size)
 
-    for term in search_terms[:8]:   # cap at 8 terms to avoid over-filtering
-        hits = keyword_search(term, gender=gender, category=category, n_results=30)
-        for h in hits:
-            if h["product_id"] not in seen_ids:
-                seen_ids.add(h["product_id"])
-                candidates.append(h)
-
-    # If VLM gave nothing useful, fall back to broad gender/category filter
+    # Fallback: if VLM produced nothing useful, use broad gender/category slice
     if not candidates:
-        candidates = keyword_search("", gender=gender, category=category, n_results=50)
+        candidates = keyword_search("", gender=gender, category=category, n_results=pool_size)
 
-    # Step 3 — Re-rank candidates by colour histogram similarity
-    # Histograms are cached lazily: computed once per product, reused thereafter.
+    # ── Step 3: Histogram re-ranking — applied only on text search candidates ─
+    # The histogram never runs independently; it only re-sorts an existing set.
     query_hist = color_histogram(image_bytes)
-    scored = []
+    re_scored: list[tuple[float, dict]] = []
     for item in candidates:
         pid = item["product_id"]
         try:
             if pid not in state.histogram_cache:
                 state.histogram_cache[pid] = color_histogram(item["image_path"])
-            sim = histogram_similarity(query_hist, state.histogram_cache[pid])
+            hist_sim = histogram_similarity(query_hist, state.histogram_cache[pid])
         except Exception:
-            sim = 0.0
-        scored.append((sim, item))
+            hist_sim = 0.0
+        re_scored.append((hist_sim, item))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:n_results]
+    re_scored.sort(key=lambda x: x[0], reverse=True)
 
     results = [
         ProductResult(
             similarity=round(sim, 4),
             **{k: v for k, v in item.items() if k != "image_path"},
         )
-        for sim, item in top
+        for sim, item in re_scored[:n_results]
     ]
     return SearchResponse(
         results=results,
-        query=f"[image: {file.filename}] → {vlm_keywords[:80]}",
+        query=f"[image] {vlm_description[:120]}",
         total=len(results),
     )
 
