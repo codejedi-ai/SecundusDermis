@@ -58,7 +58,8 @@ const Header = () => {
             {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <nav className={`nav-main ${isMenuOpen ? 'nav-open' : ''}`}>
-            <Link to="/" className="nav-link">About</Link>
+            <Link to="/" className="nav-link">Home</Link>
+            <Link to="/about" className="nav-link">About</Link>
             <Link to="/shop" className="nav-link">Shop</Link>
             <Link to="/blog" className="nav-link">Journal</Link>
           </nav>
@@ -101,7 +102,7 @@ const Header = () => {
       {/* ── Mobile menu ─────────────────────────────────────────────────── */}
       <div className={`mobile-menu ${isMenuOpen ? 'mobile-menu-open' : ''}`}>
         <nav className="mobile-nav">
-          {([['/', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact']] as [string, string][]).map(([to, label]) => (
+          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact']] as [string, string][]).map(([to, label]) => (
             <Link key={to} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
               {label}
             </Link>

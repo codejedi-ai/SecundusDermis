@@ -295,6 +295,32 @@
   margin-bottom: var(--space-4);
 }
 
+.brand-story-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
+  margin-top: var(--space-8);
+  padding-top: var(--space-8);
+  border-top: 1px solid rgba(0,0,0,0.1);
+}
+
+.brand-story-feature {
+  text-align: left;
+}
+
+.brand-story-feature-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+}
+
+.brand-story-feature-desc {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-gray-600);
+}
+
 .brand-link {
   display: inline-flex;
   align-items: center;
@@ -569,6 +595,11 @@
 
   .brand-story-image img {
     height: 400px;
+  }
+
+  .brand-story-features {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
   }
 
   .features-strip-inner {

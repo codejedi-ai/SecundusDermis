@@ -26,7 +26,7 @@ const Footer = () => {
           <div className="footer-col">
             <h4 className="footer-heading">About</h4>
             <ul className="footer-list">
-              <li><span className="footer-link">AI Agent Playground</span></li>
+              <li><Link to="/about" className="footer-link">AI Agent Playground</Link></li>
               <li><Link to="/blog" className="footer-link">Journal</Link></li>
             </ul>
           </div>
