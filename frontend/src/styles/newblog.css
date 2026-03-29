@@ -107,11 +107,11 @@
 
 .newblog-error {
   padding: 10px 14px;
-  background: #fff0f0;
-  border: 1px solid #f5c6c6;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
   border-radius: 6px;
   font-size: 0.875rem;
-  color: #c0392b;
+  color: var(--color-error);
   margin: 0;
 }
 

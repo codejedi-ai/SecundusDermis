@@ -89,12 +89,12 @@
 
 .chat-status.online::before {
   content: '● ';
-  color: #6ee7b7;
+  color: var(--color-accent);
 }
 
 .chat-status.offline::before {
   content: '● ';
-  color: #fca5a5;
+  color: var(--color-gray-400);
 }
 
 .chat-close {

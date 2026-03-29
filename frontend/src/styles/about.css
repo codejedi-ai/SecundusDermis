@@ -14,7 +14,7 @@
 .about-hero-image {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #533483 100%);
+  background: linear-gradient(160deg, var(--color-gray-900) 0%, var(--color-gray-800) 60%, var(--color-charcoal) 100%);
 }
 
 .about-hero-image img {
@@ -169,7 +169,7 @@
 }
 
 .craft-image {
-  background: linear-gradient(160deg, #0f3460 0%, #533483 50%, #1a1a2e 100%);
+  background: linear-gradient(160deg, var(--color-gray-900) 0%, var(--color-gray-800) 100%);
 }
 
 .craft-content {
