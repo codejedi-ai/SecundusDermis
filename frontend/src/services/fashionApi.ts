@@ -215,7 +215,7 @@ export interface CartResponse {
 }
 
 export function getCart(sessionId: string): Promise<CartResponse> {
-  return request('/cart', { headers: { session_id: sessionId } });
+  return request('/cart', { headers: { 'session-id': sessionId } });
 }
 
 export function addToCart(
@@ -231,7 +231,7 @@ export function addToCart(
   });
   return request(`/cart?${params}`, {
     method: 'POST',
-    headers: { session_id: sessionId },
+    headers: { 'session-id': sessionId },
   });
 }
 
@@ -242,7 +242,7 @@ export function updateCartItem(
 ): Promise<CartResponse> {
   return request(`/cart/${productId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
     body: JSON.stringify({ quantity }),
   });
 }
@@ -250,7 +250,7 @@ export function updateCartItem(
 export function removeCartItem(sessionId: string, productId: string): Promise<CartResponse> {
   return request(`/cart/${productId}`, {
     method: 'DELETE',
-    headers: { session_id: sessionId },
+    headers: { 'session-id': sessionId },
   });
 }
 
@@ -265,7 +265,7 @@ export function recordActivity(
 ): Promise<void> {
   return request('/patron/activity', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
     body: JSON.stringify({ event, path, label, seconds }),
   }).then(() => undefined).catch(() => undefined); // best-effort, never throw
 }
@@ -281,7 +281,7 @@ export interface StoredMessage {
 /** Fetch all stored messages for the current session (requires auth). */
 export function getConversation(sessionId: string): Promise<StoredMessage[]> {
   return request<{ messages: StoredMessage[] }>('/conversations', {
-    headers: { session_id: sessionId },
+    headers: { 'session-id': sessionId },
   }).then(r => r.messages ?? []);
 }
 
@@ -292,7 +292,7 @@ export function appendConversationMessage(
 ): Promise<void> {
   return request('/conversations', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', session_id: sessionId },
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
     body: JSON.stringify(msg),
   }).then(() => undefined);
 }
@@ -301,7 +301,7 @@ export function appendConversationMessage(
 export function clearConversation(sessionId: string): Promise<void> {
   return request('/conversations', {
     method: 'DELETE',
-    headers: { session_id: sessionId },
+    headers: { 'session-id': sessionId },
   }).then(() => undefined);
 }
 

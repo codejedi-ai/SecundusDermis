@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (sessionId) {
       await fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
-        headers: { 'session_id': sessionId }
+        headers: { 'session-id': sessionId }
       }).catch(() => {});
     }
     persistSessionId(null);
