@@ -16,6 +16,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom'
 import './index.css'
 import { ShopProvider } from './lib/shop-context'
+import { AuthProvider } from './lib/auth-context'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import ShopSidebar from './components/ShopSidebar'
@@ -52,38 +53,40 @@ function ShopLayout() {
 
 function App() {
   return (
-    <ShopProvider>
-      <Router>
-        <ScrollToTop />
-        <div className="app">
-          <Header />
-          <main>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/sign-in" element={<SignIn />} />
-              <Route path="/sign-up" element={<SignUp />} />
-              <Route path="/account" element={<Account />} />
-              <Route path="/cart" element={<Cart />} />
+    <AuthProvider>
+      <ShopProvider>
+        <Router>
+          <ScrollToTop />
+          <div className="app">
+            <Header />
+            <main>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/sign-in" element={<SignIn />} />
+                <Route path="/sign-up" element={<SignUp />} />
+                <Route path="/account" element={<Account />} />
+                <Route path="/cart" element={<Cart />} />
 
-              {/* Shop area — sidebar lives here, not in individual pages */}
-              <Route element={<ShopLayout />}>
-                <Route path="/shop" element={<Shop />} />
-                <Route path="/product/:id" element={<Product />} />
-              </Route>
+                {/* Shop area — sidebar lives here, not in individual pages */}
+                <Route element={<ShopLayout />}>
+                  <Route path="/shop" element={<Shop />} />
+                  <Route path="/product/:id" element={<Product />} />
+                </Route>
 
-              <Route path="/faq" element={<FAQ />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/new" element={<NewBlog />} />
-              <Route path="/blog/:id" element={<BlogPost />} />
-            </Routes>
-          </main>
-          <Footer />
-          <ChatWidget />
-        </div>
-      </Router>
-    </ShopProvider>
+                <Route path="/faq" element={<FAQ />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/blog" element={<Blog />} />
+                <Route path="/blog/new" element={<NewBlog />} />
+                <Route path="/blog/:id" element={<BlogPost />} />
+              </Routes>
+            </main>
+            <Footer />
+            <ChatWidget />
+          </div>
+        </Router>
+      </ShopProvider>
+    </AuthProvider>
   )
 }
 
