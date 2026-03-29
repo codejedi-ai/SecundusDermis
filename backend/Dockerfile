@@ -13,12 +13,18 @@ RUN uv sync --no-dev --frozen
 
 COPY . .
 
-# Download dataset at build time so it's included in the image
-# This ensures the full 12,278 product dataset is available
-RUN echo "Downloading full DeepFashion dataset..." && \
-    uv run python download_data.py && \
-    echo "Dataset download complete. Verifying..." && \
-    ls -la data/selected_images/*.jpg 2>/dev/null | wc -l || echo "Warning: Dataset may not have downloaded"
+# Download full dataset at build time (12,278 products)
+# MAX_ITEMS=0 ensures complete dataset download
+RUN echo "=== Downloading complete DeepFashion dataset (12,278 products) ===" && \
+    MAX_ITEMS=0 uv run python download_data.py && \
+    echo "=== Verifying dataset ===" && \
+    IMG_COUNT=$(ls -1 data/selected_images/*.jpg 2>/dev/null | wc -l) && \
+    echo "Images downloaded: $IMG_COUNT" && \
+    if [ "$IMG_COUNT" -ge 12000 ]; then \
+        echo "✓ Full dataset verified"; \
+    else \
+        echo "⚠ Warning: Expected 12,278 images, got $IMG_COUNT"; \
+    fi
 
 EXPOSE 8000
 
