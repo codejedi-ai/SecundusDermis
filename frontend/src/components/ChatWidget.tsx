@@ -22,7 +22,7 @@ const INITIAL_MESSAGE: Message = {
   id: 'init',
   role: 'assistant',
   content:
-    "Hi! I'm your AI fashion assistant. Describe what you're looking for, or tap the image icon to upload a photo and find similar styles.",
+    "Welcome to Secundus Dermis. I am your personal attache.\n\nShall we begin with your preferred aesthetic, or would you like me to curate a selection from the archive? You may also present an image and I will identify pieces that harmonize with your vision.",
 };
 
 // ── Component ──────────────────────────────────────────────────────────────

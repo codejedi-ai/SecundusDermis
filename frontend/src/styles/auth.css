@@ -9,30 +9,108 @@
   padding-right: var(--space-6);
 }
 
-.auth-container {
+.auth-split-container {
+  display: grid;
+  grid-template-columns: 1fr;
   width: 100%;
-  max-width: 500px;
-  padding: var(--space-8);
+  max-width: 1100px;
+  background: var(--color-white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+@media (min-width: 900px) {
+  .auth-split-container {
+    grid-template-columns: 1fr 1fr;
+    min-height: 600px;
+  }
+}
+
+/* Left Panel - Description */
+.auth-left {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #2d3748 100%);
+  color: var(--color-white);
+  padding: var(--space-10);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-left-content {
+  max-width: 420px;
+}
+
+.auth-left-title {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 400;
+  margin-bottom: var(--space-6);
+  line-height: 1.2;
+}
+
+.auth-left-text {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  opacity: 0.9;
+  margin-bottom: var(--space-8);
+}
+
+.auth-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.auth-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.auth-feature-icon {
+  font-size: 1.75rem;
+  flex-shrink: 0;
+}
+
+.auth-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-feature-text strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.auth-feature-text span {
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
+/* Right Panel - Form */
+.auth-right {
+  background: var(--color-white);
+  padding: var(--space-10);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-form-wrapper {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
 }
 
 .auth-header {
-  text-align: center;
-  margin-bottom: var(--space-10);
-}
-
-.auth-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--color-accent-dark);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-8);
 }
 
 .auth-title {
   font-family: var(--font-display);
-  font-size: 2.25rem;
+  font-size: 2rem;
   font-weight: 400;
   color: var(--color-primary);
   margin-bottom: var(--space-3);
@@ -44,28 +122,12 @@
   line-height: 1.6;
 }
 
-.auth-form-container {
-  background: var(--color-white);
-  padding: var(--space-10);
+.auth-form {
   margin-bottom: var(--space-6);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-
-.auth-footer {
-  color: var(--color-gray-600);
-  text-align: center;
-  font-size: 0.9375rem;
-}
-
-.auth-link {
-  color: var(--color-primary);
-  font-weight: 500;
-  text-decoration: underline;
 }
 
 .form-group {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
 .form-group label {
@@ -153,6 +215,18 @@
   border: 1px solid #fcc;
 }
 
+.auth-footer {
+  color: var(--color-gray-600);
+  text-align: center;
+  font-size: 0.9375rem;
+}
+
+.auth-link {
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: underline;
+}
+
 .auth-actions {
   display: flex;
   gap: var(--space-4);
@@ -179,38 +253,26 @@
   border-color: var(--color-gray-400);
 }
 
-/* Responsive adjustments */
+/* Mobile adjustments */
 @media (max-width: 600px) {
-  .auth-container {
-    padding: var(--space-4);
+  .auth-split-container {
+    border-radius: 8px;
   }
   
-  .auth-form-container {
+  .auth-left {
+    padding: var(--space-8);
+  }
+  
+  .auth-left-title {
+    font-size: 1.75rem;
+  }
+  
+  .auth-right {
     padding: var(--space-6);
   }
   
   .auth-title {
-    font-size: 1.75rem;
-  }
-}
-
-@media (min-width: 901px) {
-  /* Landscape desktop - constrain height */
-  .auth-page {
-    padding-top: calc(var(--header-height) + var(--space-8));
-    padding-bottom: var(--space-8);
-  }
-  
-  .auth-container {
-    max-width: 480px;
-  }
-  
-  .auth-form-container {
-    padding: var(--space-8);
-  }
-  
-  .form-group {
-    margin-bottom: var(--space-5);
+    font-size: 1.5rem;
   }
 }
 

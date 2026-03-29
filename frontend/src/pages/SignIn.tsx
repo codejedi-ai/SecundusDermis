@@ -28,16 +28,49 @@ const SignIn = () => {
 
   return (
     <div className="auth-page">
-      <div className="container">
-        <div className="auth-container">
-          <div className="auth-header">
-            <h1 className="auth-title">Sign In</h1>
-            <p className="auth-description">
-              Welcome back to Secundus Dermis
+      <div className="auth-split-container">
+        <div className="auth-left">
+          <div className="auth-left-content">
+            <h1 className="auth-left-title">Welcome Back</h1>
+            <p className="auth-left-text">
+              Sign in to access your AI fashion assistant. Continue your conversations,
+              review product recommendations, and explore the 12,000+ item catalog
+              with personalized suggestions.
             </p>
+            <div className="auth-features">
+              <div className="auth-feature">
+                <div className="auth-feature-icon">🤖</div>
+                <div className="auth-feature-text">
+                  <strong>AI Shopping Agent</strong>
+                  <span>Get personalized recommendations</span>
+                </div>
+              </div>
+              <div className="auth-feature">
+                <div className="auth-feature-icon">🛍️</div>
+                <div className="auth-feature-text">
+                  <strong>12,000+ Products</strong>
+                  <span>Browse the full catalog</span>
+                </div>
+              </div>
+              <div className="auth-feature">
+                <div className="auth-feature-icon">💬</div>
+                <div className="auth-feature-text">
+                  <strong>Chat History</strong>
+                  <span>Pick up where you left off</span>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="auth-right">
+          <div className="auth-form-wrapper">
+            <div className="auth-header">
+              <h1 className="auth-title">Sign In</h1>
+              <p className="auth-description">
+                Enter your credentials to continue
+              </p>
+            </div>
 
-          <div className="auth-form-container">
             <form onSubmit={handleSubmit} className="auth-form">
               {error && <div className="auth-error">{error}</div>}
 
@@ -61,7 +94,7 @@ const SignIn = () => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   required
                   className="auth-input"
                 />
@@ -75,12 +108,12 @@ const SignIn = () => {
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </button>
             </form>
-          </div>
 
-          <div className="auth-footer">
-            <p>
-              Don't have an account? <a href="/sign-up" className="auth-link">Sign up here</a>
-            </p>
+            <div className="auth-footer">
+              <p>
+                Don't have an account? <a href="/sign-up" className="auth-link">Sign up here</a>
+              </p>
+            </div>
           </div>
         </div>
       </div>

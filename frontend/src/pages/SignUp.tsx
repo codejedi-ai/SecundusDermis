@@ -41,16 +41,49 @@ const SignUp = () => {
 
   return (
     <div className="auth-page">
-      <div className="container">
-        <div className="auth-container">
-          <div className="auth-header">
-            <h1 className="auth-title">Join Secundus Dermis</h1>
-            <p className="auth-description">
-              Create your account to access exclusive content, track orders, and join our community of confident women.
+      <div className="auth-split-container">
+        <div className="auth-left">
+          <div className="auth-left-content">
+            <h1 className="auth-left-title">Join Secundus Dermis</h1>
+            <p className="auth-left-text">
+              Create your account to access the AI-powered fashion shopping experience.
+              Get personalized recommendations, save your preferences, and discover
+              your perfect style with our intelligent assistant.
             </p>
+            <div className="auth-features">
+              <div className="auth-feature">
+                <div className="auth-feature-icon">🤖</div>
+                <div className="auth-feature-text">
+                  <strong>AI Fashion Agent</strong>
+                  <span>Chat naturally to find your style</span>
+                </div>
+              </div>
+              <div className="auth-feature">
+                <div className="auth-feature-icon">🔍</div>
+                <div className="auth-feature-text">
+                  <strong>Visual Search</strong>
+                  <span>Upload photos to find similar items</span>
+                </div>
+              </div>
+              <div className="auth-feature">
+                <div className="auth-feature-icon">📦</div>
+                <div className="auth-feature-text">
+                  <strong>12,000+ Products</strong>
+                  <span>Explore our curated catalog</span>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="auth-right">
+          <div className="auth-form-wrapper">
+            <div className="auth-header">
+              <h1 className="auth-title">Create Account</h1>
+              <p className="auth-description">
+                Fill in your details to get started
+              </p>
+            </div>
 
-          <div className="auth-form-container">
             <form onSubmit={handleSubmit} className="auth-form">
               {error && <div className="auth-error">{error}</div>}
 
@@ -118,12 +151,12 @@ const SignUp = () => {
                 {isLoading ? 'Creating account...' : 'Create Account'}
               </button>
             </form>
-          </div>
 
-          <div className="auth-footer">
-            <p>
-              Already have an account? <a href="/sign-in" className="auth-link">Sign in here</a>
-            </p>
+            <div className="auth-footer">
+              <p>
+                Already have an account? <a href="/sign-in" className="auth-link">Sign in here</a>
+              </p>
+            </div>
           </div>
         </div>
       </div>
