@@ -21,7 +21,7 @@ import Footer from './components/Footer'
 import ShopSidebar from './components/ShopSidebar'
 import Product from './pages/Product'
 import Shop from './pages/Shop'
-import About from './pages/About'
+import Home from './pages/Home'
 import Contact from './pages/Contact'
 import FAQ from './pages/FAQ'
 import Blog from './pages/Blog'
@@ -52,7 +52,7 @@ function App() {
           <Header />
           <main>
             <Routes>
-              <Route path="/" element={<About />} />
+              <Route path="/" element={<Home />} />
 
               {/* Shop area — sidebar lives here, not in individual pages */}
               <Route element={<ShopLayout />}>
