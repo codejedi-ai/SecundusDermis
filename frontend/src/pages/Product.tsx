@@ -52,6 +52,11 @@ export default function Product() {
         image_url:    product.image_url,
       })
       setAdded(true)
+      // Force a refresh to ensure cart count updates everywhere
+      setTimeout(() => setAdded(false), 3000)
+    } catch (err) {
+      console.error('Failed to add to cart:', err)
+      alert('Failed to add to cart. Please try again.')
     } finally {
       setAdding(false)
     }

@@ -47,8 +47,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = async (item: { product_id: string; product_name: string; price: number; image_url: string }) => {
     if (!sessionId) return;
-    const updated = await fashionApi.addToCart(sessionId, item);
-    setCart(updated);
+    try {
+      const updated = await fashionApi.addToCart(sessionId, item);
+      setCart(updated);
+    } catch (err) {
+      console.error('Failed to add to cart:', err);
+      throw err;
+    }
   };
 
   const removeFromCart = async (productId: string) => {
