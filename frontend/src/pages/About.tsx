@@ -39,7 +39,10 @@ const About = () => {
     <div className="about-page">
       {/* Hero */}
       <section className="about-hero">
-        <div className="about-hero-image" />
+        <div className="about-hero-image">
+          <img src="/hero.jpeg" alt="Hero" />
+        </div>
+
         <div className="about-hero-content">
           <span className="about-label">What is this?</span>
           <h1 className="about-title">An AI Agent Playground</h1>
