@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import * as fashionApi from '../services/fashionApi'
 import '../styles/newblog.css'
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860'
 
 const CATEGORIES = [
   'Fashion Tips', 'Care Guide', 'Product Guide', 'Innovation',
@@ -13,6 +14,8 @@ const today = new Date().toISOString().slice(0, 10)
 
 export default function NewBlog() {
   const navigate = useNavigate()
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const [form, setForm] = useState({
     title: '',
@@ -31,6 +34,17 @@ export default function NewBlog() {
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
+  // Check if user is logged in on mount
+  useEffect(() => {
+    const sessionId = localStorage.getItem('sd_session_id')
+    if (sessionId) {
+      fetch(`${API_BASE}/auth/me`, { headers: { 'session_id': sessionId } })
+        .then(r => { if (r.ok) setIsAuthenticated(true) })
+        .catch(() => {})
+    }
+    setIsLoading(false)
+  }, [])
+
   const set = (field: string, value: string | boolean) =>
     setForm(f => ({ ...f, [field]: value }))
 
@@ -41,25 +55,77 @@ export default function NewBlog() {
       setError('Title and body are required.')
       return
     }
-    if (!adminKey.trim()) {
-      setError('Admin key is required.')
+    
+    // Get session_id for authenticated users
+    const sessionId = localStorage.getItem('sd_session_id')
+    if (!sessionId && !adminKey.trim()) {
+      setError('You must be logged in or provide an admin key.')
       return
     }
+    
     setSaving(true)
     try {
-      const res = await fashionApi.createJournalPost(
-        {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (sessionId) {
+        headers['session_id'] = sessionId
+      } else {
+        headers['X-Admin-Key'] = adminKey
+      }
+      
+      const res = await fetch(`${API_BASE}/journal`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
           ...form,
           tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-        },
-        adminKey,
-      )
-      navigate(`/blog/${res.slug}`)
+        }),
+      })
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Failed to save post' }))
+        throw new Error(err.detail || 'Failed to save post')
+      }
+      
+      const data = await res.json()
+      navigate(`/blog/${data.slug}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save post.')
     } finally {
       setSaving(false)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="newblog">
+        <div className="container">
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated && !adminKey) {
+    return (
+      <div className="newblog">
+        <div className="container">
+          <div className="auth-container">
+            <div className="auth-header">
+              <h1 className="auth-title">Sign In Required</h1>
+              <p className="auth-description">Only logged-in users can create blog posts.</p>
+            </div>
+            <div className="auth-actions">
+              <button onClick={() => navigate('/sign-in')} className="auth-button-primary">
+                Sign In
+              </button>
+              <button onClick={() => navigate('/sign-up')} className="auth-button-secondary">
+                Create Account
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

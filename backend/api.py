@@ -660,11 +660,16 @@ class NewJournalPost(BaseModel):
 async def journal_create(
     post: NewJournalPost,
     x_admin_key: Optional[str] = Header(default=None),
+    session_id: Optional[str] = Header(default=None),
 ):
-    """Create a new journal entry as a .md file. Requires X-Admin-Key header."""
+    """Create a new journal entry. Requires admin key OR authenticated user session."""
+    # Check auth: either valid admin_key OR logged-in user
     admin_key = os.getenv("ADMIN_KEY", "change-me-before-deploy")
-    if x_admin_key != admin_key:
-        raise HTTPException(status_code=401, detail="Invalid admin key")
+    is_admin = x_admin_key == admin_key
+    is_authenticated = session_id and get_user_from_session(session_id) is not None
+    
+    if not is_admin and not is_authenticated:
+        raise HTTPException(status_code=401, detail="Admin key or valid session required")
 
     # Build slug from title
     slug = re.sub(r"[^a-z0-9]+", "-", post.title.lower()).strip("-")
@@ -672,11 +677,18 @@ async def journal_create(
     if filename.exists():
         raise HTTPException(status_code=409, detail=f"Slug already exists: {slug}")
 
+    # Use logged-in user's name as author if not provided
+    author = post.author
+    if is_authenticated and not author:
+        user = get_user_from_session(session_id)
+        if user:
+            author = user.name or user.email
+
     tags_str = ", ".join(f'"{t}"' for t in post.tags) if post.tags else ""
     frontmatter = f"""---
 title: "{post.title}"
 excerpt: "{post.excerpt}"
-author: "{post.author}"
+author: "{author or 'Secundus Dermis'}"
 date: "{post.date}"
 read_time: "{post.read_time}"
 category: "{post.category}"

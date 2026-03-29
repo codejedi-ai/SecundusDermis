@@ -86,6 +86,11 @@ const Header = () => {
             <Link to="/about" className="nav-link">About</Link>
             <Link to="/shop" className="nav-link">Shop</Link>
             <Link to="/blog" className="nav-link">Journal</Link>
+            {user && (
+              <Link to="/blog/new" className="nav-link nav-link-write">
+                Write
+              </Link>
+            )}
           </nav>
         </div>
 
@@ -136,6 +141,11 @@ const Header = () => {
               {label}
             </Link>
           ))}
+          {user && (
+            <Link to="/blog/new" className="mobile-nav-link mobile-nav-write" onClick={() => setIsMenuOpen(false)}>
+              ✏️ Write
+            </Link>
+          )}
         </nav>
       </div>
     </header>
