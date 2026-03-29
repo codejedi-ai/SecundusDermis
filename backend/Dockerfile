@@ -26,6 +26,10 @@ RUN echo "=== Downloading complete DeepFashion dataset (12,278 products) ===" &&
         echo "⚠ Warning: Expected 12,278 images, got $IMG_COUNT"; \
     fi
 
+# Ensure data directory has correct permissions for volume mount
+RUN chown -R root:root /app/data && \
+    chmod -R 755 /app/data
+
 EXPOSE 8000
 
 CMD ["uv", "run", "python", "api.py"]
