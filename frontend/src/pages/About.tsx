@@ -37,13 +37,9 @@ const features = [
 const About = () => {
   return (
     <div className="about-page">
-      {/* Hero */}
-      <section className="about-hero">
-        <div className="about-hero-image">
-          <img src="/image-hero.jpeg" alt="Hero" />
-        </div>
-
-        <div className="about-hero-content">
+      {/* Intro */}
+      <section className="about-intro">
+        <div className="about-intro-inner">
           <span className="about-label">What is this?</span>
           <h1 className="about-title">An AI Agent Playground</h1>
           <p className="about-subtitle">

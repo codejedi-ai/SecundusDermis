@@ -38,6 +38,11 @@ from pydantic import BaseModel
 
 from agent import tools as agent_tools
 from agent.agent import create_agent
+from auth import (
+    UserCreate, UserLogin, UserResponse, LoginResponse,
+    create_user, authenticate_user, get_user_from_session, logout,
+)
+from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from download_data import download_and_extract
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -688,6 +693,102 @@ image: "{post.image}"
     agent_tools.init_tools(state.catalog, journal=state.journal)
     logger.info(f"Created journal entry: {slug}")
     return {"slug": slug, "message": "Created"}
+
+
+# ── Authentication Endpoints ─────────────────────────────────────────────────
+
+@app.post("/auth/register", response_model=UserResponse, status_code=201)
+async def register(user: UserCreate):
+    """Register a new user."""
+    result = create_user(email=user.email, password=user.password, name=user.name)
+    if result is None:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return result
+
+
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(user: UserLogin):
+    """Login and get session."""
+    session_id = authenticate_user(email=user.email, password=user.password)
+    if session_id is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    user_resp = get_user_from_session(session_id)
+    return LoginResponse(session_id=session_id, user=user_resp)
+
+
+@app.post("/auth/logout")
+async def logout_endpoint(session_id: str = Header(default=None)):
+    """Logout and invalidate session."""
+    if session_id:
+        logout(session_id)
+    return {"status": "logged out"}
+
+
+@app.get("/auth/me", response_model=UserResponse)
+async def get_current_user(session_id: str = Header(default=None)):
+    """Get current user from session."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return user
+
+
+# ── Cart Endpoints ───────────────────────────────────────────────────────────
+
+@app.get("/cart", response_model=CartResponse)
+async def get_user_cart(session_id: str = Header(default=None)):
+    """Get user's cart."""
+    if not session_id:
+        return CartResponse(items=[], total=0.0)
+    return get_cart(session_id)
+
+
+@app.post("/cart", response_model=CartResponse)
+async def add_item_to_cart(
+    product_id: str,
+    product_name: str,
+    price: float,
+    image_url: str,
+    quantity: int = 1,
+    session_id: str = Header(default=None),
+):
+    """Add item to cart."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
+
+
+@app.put("/cart/{product_id}", response_model=CartResponse)
+async def update_cart_item_endpoint(
+    product_id: str,
+    quantity: int,
+    session_id: str = Header(default=None),
+):
+    """Update cart item quantity."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    return update_cart_item(session_id, product_id, quantity)
+
+
+@app.delete("/cart/{product_id}", response_model=CartResponse)
+async def remove_cart_item_endpoint(
+    product_id: str,
+    session_id: str = Header(default=None),
+):
+    """Remove item from cart."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    return remove_from_cart(session_id, product_id)
+
+
+@app.delete("/cart", response_model=CartResponse)
+async def clear_user_cart(session_id: str = Header(default=None)):
+    """Clear entire cart."""
+    if not session_id:
+        return CartResponse(items=[], total=0.0)
+    return clear_cart(session_id)
 
 
 # ── Serve React SPA (when running as single container) ────────────────────────

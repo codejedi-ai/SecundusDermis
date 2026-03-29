@@ -19,6 +19,7 @@ import { ShopProvider } from './lib/shop-context'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import ShopSidebar from './components/ShopSidebar'
+import ScrollToTop from './components/ScrollToTop'
 import Product from './pages/Product'
 import Shop from './pages/Shop'
 import Home from './pages/Home'
@@ -53,6 +54,7 @@ function App() {
   return (
     <ShopProvider>
       <Router>
+        <ScrollToTop />
         <div className="app">
           <Header />
           <main>

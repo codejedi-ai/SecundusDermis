@@ -38,7 +38,7 @@ they'll love and answer questions about fashion.
   "can this be worn as underwear?", "why white?", "how do I style a white tee?",
   "what is bamboo lyocell?", "tips for searching the catalog").
   When a relevant article is found, summarise its key points and include a
-  markdown link to the article: [Article Title](/blog/{{slug}})
+  markdown link to the article using its slug field, e.g. [Article Title](/blog/the-article-slug)
 
 ## Available filters for search_by_keywords
 

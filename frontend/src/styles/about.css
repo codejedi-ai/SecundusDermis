@@ -2,71 +2,39 @@
   padding-top: var(--header-height);
 }
 
-.about-hero {
-  position: relative;
-  height: calc(100vh - var(--header-height));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.about-hero-image {
-  position: absolute;
-  inset: 0;
-  background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.about-hero-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-/* This creates the dark overlay ON TOP of the image */
-.about-hero-image::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.4));
-  pointer-events: none; /* Allows clicks to pass through to the image if needed */
-}
-
-.about-hero-content {
-  position: relative;
-  z-index: 1;
+.about-intro {
+  padding: var(--space-16) var(--space-6);
+  background: var(--color-gray-50);
   text-align: center;
-  color: var(--color-white);
-  padding: var(--space-4);
-  max-width: 700px;
+}
+
+.about-intro-inner {
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .about-label {
   display: block;
   font-size: 0.75rem;
-  font-weight: 400;
-  letter-spacing: 0.2em;
+  font-weight: 500;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
+  color: var(--color-accent-dark);
   margin-bottom: var(--space-3);
-  opacity: 0.9;
 }
 
 .about-title {
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-size: clamp(2rem, 5vw, 3rem);
   font-weight: 400;
-  margin-bottom: var(--space-4);
-  color: var(--color-white);
+  color: var(--color-primary);
+  margin-bottom: var(--space-5);
 }
 
 .about-subtitle {
   font-size: 1.125rem;
-  line-height: 1.7;
-  opacity: 0.9;
+  line-height: 1.8;
+  color: var(--color-gray-600);
 }
 
 .about-mission {
