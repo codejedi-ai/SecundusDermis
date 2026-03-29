@@ -40,7 +40,7 @@ const About = () => {
       {/* Hero */}
       <section className="about-hero">
         <div className="about-hero-image">
-          <img src="/hero.jpeg" alt="Hero" />
+          <img src="/image-hero.jpeg" alt="Hero" />
         </div>
 
         <div className="about-hero-content">
@@ -106,7 +106,9 @@ const About = () => {
 
       {/* Stack */}
       <section className="about-craft">
-        <div className="craft-image" />
+        <div className="craft-image">
+          <img src="/image-craft.jpeg" alt="Craft" />
+        </div>
         <div className="craft-content">
           <span className="craft-label">Tech Stack</span>
           <h2 className="craft-title">FastAPI · React · Google ADK</h2>

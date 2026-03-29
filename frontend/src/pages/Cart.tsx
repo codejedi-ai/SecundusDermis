@@ -7,11 +7,19 @@ const Cart = () => {
   const cartItems = [
     {
       id: 1,
-      name: 'Secundus Dermis Premium White Tee',
-      price: 89.00,
-      quantity: 2,
+      name: 'Floral Print Midi Dress',
+      price: 79.00,
+      quantity: 1,
       size: 'M',
       image: '/img/photo-7679720.jpg'
+    },
+    {
+      id: 2,
+      name: 'Classic Denim Jacket',
+      price: 89.00,
+      quantity: 1,
+      size: 'S',
+      image: '/img/photo-6311475.jpg'
     }
   ]
 

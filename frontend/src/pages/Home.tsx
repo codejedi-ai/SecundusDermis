@@ -32,19 +32,19 @@ const Home = () => {
       name: "Sarah M.",
       location: "New York",
       rating: 5,
-      text: "The most comfortable underlayer I've ever worn. The quality is exceptional."
+      text: "The AI assistant understood exactly what I was looking for. Found the perfect outfit in minutes!"
     },
     {
       name: "Emma L.",
       location: "Los Angeles",
       rating: 5,
-      text: "Finally found the perfect white tee. The built-in support is a game changer."
+      text: "The AI assistant found exactly what I was looking for in seconds. So convenient!"
     },
     {
       name: "Jessica R.",
       location: "Chicago",
       rating: 5,
-      text: "Luxurious feel, perfect fit. I've ordered three more."
+      text: "Image search is incredible - uploaded a photo from Pinterest and it found similar items instantly."
     }
   ]
 
@@ -53,13 +53,13 @@ const Home = () => {
       <section className="hero">
         <div className="hero-image">
           <img
-            src="/img/photo-6311387.jpg"
-            alt="Woman in elegant white underlayer"
+            src="/image-hero.jpeg"
+            alt="Woman in elegant outfit"
           />
         </div>
         <div className="hero-content">
           <span className="hero-label">AI-Powered Fashion Discovery</span>
-          <h1 className="hero-title">Your Second Skin</h1>
+          <h1 className="hero-title">Your AI Fashion Assistant</h1>
           <p className="hero-subtitle">Tell the AI what you're looking for — or upload a photo to find your match</p>
           <Link to="/shop" className="hero-cta">
             <span>Shop Now</span>
@@ -116,8 +116,8 @@ const Home = () => {
           </div>
           <div className="brand-story-image">
             <img
-              src="/img/photo-6311475.jpg"
-              alt="Premium fabric detail"
+              src="/image-craft.jpeg"
+              alt="Fashion catalog preview"
             />
           </div>
         </div>
@@ -158,18 +158,12 @@ const Home = () => {
 
       <section className="newsletter">
         <div className="newsletter-inner">
-          <h2 className="newsletter-title">Join the Community</h2>
+          <h2 className="newsletter-title">Try the AI Assistant</h2>
           <p className="newsletter-text">
-            Subscribe to receive updates on new arrivals, exclusive offers, and styling inspiration.
+            Click the chat icon in the bottom right corner to start chatting with our AI fashion assistant.
+            Describe what you're looking for or upload a photo to find similar styles.
           </p>
-          <form className="newsletter-form" onSubmit={(e) => e.preventDefault()}>
-            <input
-              type="email"
-              placeholder="Enter your email"
-              className="newsletter-input"
-            />
-            <button type="submit" className="newsletter-btn">Subscribe</button>
-          </form>
+          <Link to="/shop" className="newsletter-btn">Browse Catalog</Link>
         </div>
       </section>
     </div>

@@ -17,20 +17,20 @@ const FAQ = () => {
       category: "Product & Features",
       questions: [
         {
-          question: "What makes Secundus Dermis tees different from regular white tees?",
-          answer: "Our tees feature a premium silk and cotton-spandex blend with silver infusion for odor resistance, an integrated seamless bra for support, and innovative emergency functionality. The slim-fitting design creates a perfect foundation layer that's invisible under clothes."
+          question: "How does the AI fashion assistant work?",
+          answer: "Our AI assistant uses Google's Gemini model to understand your natural language queries. Describe what you're looking for — like 'floral summer dress under $80' — and the AI will search our 12,000+ item catalog to find matching products. It can also analyze uploaded photos to find visually similar items."
         },
         {
-          question: "How does the integrated bra work?",
-          answer: "The seamless built-in bra is engineered into the fabric structure, providing comfortable support without the bulk or visibility of traditional undergarments. It maintains its shape and effectiveness wash after wash, eliminating the need for additional bras."
+          question: "Can I search using images?",
+          answer: "Yes! Click the image icon in the chat widget to upload a photo. The AI will analyze the image to identify clothing attributes like color, style, and pattern, then find similar items in our catalog using visual similarity matching."
         },
         {
-          question: "What is the emergency functionality feature?",
-          answer: "Our tee includes a thoughtfully designed emergency feature where the sleeves can be carefully folded to create a temporary, hygienic liner solution. This provides peace of mind for unexpected situations while maintaining comfort and dignity. The feature is completely discreet and doesn't affect the garment's primary function."
+          question: "Is the AI recommendations trustworthy?",
+          answer: "Absolutely. The AI never makes up product details — it only recommends items that actually exist in our catalog. Every recommendation is grounded in real product data, and you can see full details before making any decisions."
         },
         {
-          question: "Is the emergency feature hygienic and safe to use?",
-          answer: "Yes, absolutely. The feature is designed with hygiene in mind, using the same premium, silver-infused fabric that naturally resists bacteria and odors. The folding method creates a clean barrier, and the garment can be easily washed afterward using our standard care instructions."
+          question: "What can I ask the AI assistant?",
+          answer: "You can ask about specific products ('show me black leather jackets'), get styling advice ('what goes well with navy pants?'), find items by price range ('dresses under $50'), or even search the editorial journal for fashion tips and care guides."
         }
       ]
     },
@@ -38,16 +38,16 @@ const FAQ = () => {
       category: "Sizing & Fit",
       questions: [
         {
-          question: "How do I choose the right size?",
-          answer: "Our tees are designed to fit snugly as a compression layer. We recommend referring to our detailed size guide and measuring yourself for the most accurate fit. If you're between sizes, we suggest sizing up for comfort. We offer free exchanges within 30 days."
+          question: "How do I know what size to order?",
+          answer: "Each product page includes detailed size charts with measurements. The AI assistant can also help recommend sizes based on your preferences — just ask something like 'I usually wear medium in tops, what size should I get for this dress?'"
         },
         {
           question: "What if the size doesn't fit perfectly?",
-          answer: "We offer free exchanges within 30 days of purchase. Simply contact our customer service team, and we'll help you find the perfect fit. Our goal is to ensure you're completely satisfied with your Secundus Dermis experience."
+          answer: "We offer free exchanges within 30 days of purchase. Simply contact our customer service team through the chat widget or contact page, and we'll help you find the perfect fit. Our goal is to ensure you're completely satisfied."
         },
         {
-          question: "Do the tees shrink after washing?",
-          answer: "Our premium fabric blend is pre-shrunk and designed to maintain its shape and size when cared for according to our instructions. Following our care guidelines will ensure your tee retains its perfect fit wash after wash."
+          question: "Do items shrink after washing?",
+          answer: "Most items are pre-shrunk and designed to maintain their shape when cared for according to the care instructions on each product page. Following the care guidelines will ensure your items retain their fit wash after wash."
         }
       ]
     },
@@ -55,16 +55,16 @@ const FAQ = () => {
       category: "Materials & Care",
       questions: [
         {
-          question: "What materials are used in Secundus Dermis tees?",
-          answer: "Our exclusive blend features premium silk (40%), organic cotton (35%), spandex (20%), and ice-cotton (5%). The fabric is infused with silver ions for natural antimicrobial properties, providing luxury, comfort, and performance."
+          question: "What materials are used in the products?",
+          answer: "Our catalog features items made from various materials including cotton, polyester, linen, silk, denim, and blends. Each product page lists the specific material composition and care instructions for that item."
         },
         {
-          question: "How should I care for my Secundus Dermis tee?",
-          answer: "Machine wash cold with like colors using gentle, sulfate-free detergent. Avoid fabric softeners to maintain the silver infusion. Tumble dry low or hang dry. Do not bleach or dry clean. Iron on low heat if needed, and store flat or hung to maintain shape."
+          question: "How should I care for my purchases?",
+          answer: "Care instructions vary by item and are listed on each product page. Generally, we recommend washing cold with like colors, using gentle detergent, and avoiding bleach. Check the specific care label for your item."
         },
         {
-          question: "How long will my Secundus Dermis tee last?",
-          answer: "With proper care, your Secundus Dermis tee is designed to maintain its quality, shape, and functionality for years. We're so confident in our craftsmanship that we offer a 1-year quality guarantee on all our products."
+          question: "How long will my purchases last?",
+          answer: "With proper care, quality clothing can last for years. We recommend following care instructions, storing items properly, and handling delicate fabrics with care. The AI assistant can provide specific care tips for any item."
         }
       ]
     },
@@ -93,8 +93,8 @@ const FAQ = () => {
         <div className="faq-header">
           <h1 className="page-title">Frequently Asked Questions</h1>
           <p className="page-description">
-            Find answers to common questions about Secundus Dermis tees, sizing, care, and more. 
-            Can't find what you're looking for? <a href="/contact" className="contact-link">Contact us</a> directly.
+            Find answers to common questions about our AI fashion assistant, sizing, care, and more.
+            Can't find what you're looking for? <a href="/contact" className="contact-link">Contact us</a> or ask the AI chat widget.
           </p>
         </div>
 
