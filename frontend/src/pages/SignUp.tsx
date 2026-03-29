@@ -7,6 +7,7 @@ const SignUp = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
@@ -29,7 +30,7 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
-      await signUp(email, password);
+      await signUp(email, password, name || undefined);
       navigate('/sign-in');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign up');
@@ -52,6 +53,18 @@ const SignUp = () => {
           <div className="auth-form-container">
             <form onSubmit={handleSubmit} className="auth-form">
               {error && <div className="auth-error">{error}</div>}
+
+              <div className="form-group">
+                <label htmlFor="name">Name (optional)</label>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  className="auth-input"
+                />
+              </div>
 
               <div className="form-group">
                 <label htmlFor="email">Email</label>

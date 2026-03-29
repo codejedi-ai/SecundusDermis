@@ -1,19 +1,20 @@
 /**
- * Local auth — no external service.
- * Accounts are stored in localStorage under "sd_users".
- * The active session is stored under "sd_session".
+ * Auth context using backend API.
+ * Session is stored in localStorage as session_id.
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface User {
-  id: string;
   email: string;
-  created_at: string;
+  name: string;
 }
 
 export interface Session {
+  session_id: string;
   user: User;
 }
 
@@ -21,37 +22,22 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, name?: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────
 
-const USERS_KEY = 'sd_users';
-const SESSION_KEY = 'sd_session';
+const SESSION_KEY = 'sd_session_id';
 
-interface StoredUser extends User {
-  pw: string; // base64-encoded password
-}
-
-function loadUsers(): StoredUser[] {
-  try { return JSON.parse(localStorage.getItem(USERS_KEY) ?? '[]'); }
-  catch { return []; }
-}
-
-function saveUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function loadSession(): Session | null {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null'); }
+function loadSessionId(): string | null {
+  try { return localStorage.getItem(SESSION_KEY); }
   catch { return null; }
 }
 
-function persistSession(session: Session | null) {
-  if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+function persistSessionId(sessionId: string | null) {
+  if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
   else localStorage.removeItem(SESSION_KEY);
 }
 
@@ -65,50 +51,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const s = loadSession();
-    if (s) { setSession(s); setUser(s.user); }
-    setIsLoading(false);
+    const sessionId = loadSessionId();
+    if (sessionId) {
+      fetch(`${API_BASE}/auth/me`, {
+        headers: { 'session_id': sessionId }
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(u => {
+          if (u) {
+            const s: Session = { session_id: sessionId, user: u };
+            setSession(s);
+            setUser(u);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
+    }
   }, []);
 
-  const signUp = async (email: string, password: string) => {
-    const users = loadUsers();
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      throw new Error('An account with this email already exists');
+  const signUp = async (email: string, password: string, name?: string) => {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || 'Registration failed');
     }
-    const newUser: StoredUser = {
-      id: crypto.randomUUID(),
-      email,
-      created_at: new Date().toISOString(),
-      pw: btoa(password),
-    };
-    saveUsers([...users, newUser]);
   };
 
   const signIn = async (email: string, password: string) => {
-    const found = loadUsers().find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.pw === btoa(password),
-    );
-    if (!found) throw new Error('Invalid email or password');
-    const { pw: _pw, ...publicUser } = found;
-    const s: Session = { user: publicUser };
-    persistSession(s);
-    setSession(s);
-    setUser(publicUser);
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Invalid credentials' }));
+      throw new Error(err.detail || 'Invalid email or password');
+    }
+    const data: Session = await res.json();
+    persistSessionId(data.session_id);
+    setSession(data);
+    setUser(data.user);
   };
 
   const signOut = async () => {
-    persistSession(null);
+    const sessionId = loadSessionId();
+    if (sessionId) {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { 'session_id': sessionId }
+      }).catch(() => {});
+    }
+    persistSessionId(null);
     setSession(null);
     setUser(null);
   };
 
-  // No server → password reset is not supported
-  const resetPassword = async (_email: string) => {
-    throw new Error('Password reset is not available in offline mode');
-  };
-
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signOut, resetPassword }}>
+    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

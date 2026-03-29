@@ -28,6 +28,10 @@ import FAQ from './pages/FAQ'
 import Blog from './pages/Blog'
 import BlogPost from './pages/BlogPost'
 import NewBlog from './pages/NewBlog'
+import SignIn from './pages/SignIn'
+import SignUp from './pages/SignUp'
+import Account from './pages/Account'
+import Cart from './pages/Cart'
 import ChatWidget from './components/ChatWidget'
 import './styles/shop.css'
 
@@ -55,6 +59,10 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
+              <Route path="/sign-in" element={<SignIn />} />
+              <Route path="/sign-up" element={<SignUp />} />
+              <Route path="/account" element={<Account />} />
+              <Route path="/cart" element={<Cart />} />
 
               {/* Shop area — sidebar lives here, not in individual pages */}
               <Route element={<ShopLayout />}>

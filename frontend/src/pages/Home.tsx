@@ -59,9 +59,9 @@ const Home = () => {
           />
         </div>
         <div className="hero-content">
-          <span className="hero-label">AI-Powered Fashion Discovery</span>
-          <h1 className="hero-title">Your AI Fashion Assistant</h1>
-          <p className="hero-subtitle">Tell the AI what you're looking for — or upload a photo to find your match</p>
+          <span className="hero-label">Retail of the Future</span>
+          <h1 className="hero-title">Secundus Dermis</h1>
+          <p className="hero-subtitle">Find your second skin</p>
           <Link to="/shop" className="hero-cta">
             <span>Shop Now</span>
             <ArrowRight size={16} />
@@ -123,7 +123,7 @@ const Home = () => {
           </div>
           <div className="brand-story-image">
             <img
-              src="/image-craft.jpeg"
+              src="/image-understand.jpeg"
               alt="Fashion catalog preview"
             />
           </div>

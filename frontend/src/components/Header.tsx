@@ -1,17 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, Search, X } from 'lucide-react'
+import { Menu, Search, X, ShoppingCart, User } from 'lucide-react'
 import { useShop } from '../lib/shop-context'
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860'
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [user, setUser] = useState<{ email: string; name: string } | null>(null)
+  const [cartCount, setCartCount] = useState(0)
 
   const { inputValue, setInputValue, setQuery } = useShop()
   const navigate = useNavigate()
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevInputRef = useRef(inputValue)
   const [aiFlash, setAiFlash] = useState(false)
+
+  // Load user and cart on mount
+  useEffect(() => {
+    const sessionId = localStorage.getItem('session_id')
+    if (sessionId) {
+      fetch(`${API_BASE}/auth/me`, {
+        headers: { 'session_id': sessionId }
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(u => { if (u) setUser(u) })
+        .catch(() => {})
+      
+      fetch(`${API_BASE}/cart`, {
+        headers: { 'session_id': sessionId }
+      })
+        .then(r => r.ok ? r.json() : { items: [] })
+        .then(c => setCartCount(c.items.reduce((n: number, i: any) => n + i.quantity, 0)))
+        .catch(() => {})
+    }
+  }, [])
 
   // Flash the search bar when the AI updates inputValue externally
   useEffect(() => {
@@ -91,9 +115,14 @@ const Header = () => {
             )}
           </div>
 
-          <nav className="nav-secondary">
-            <Link to="/faq" className="nav-link">FAQ</Link>
-            <Link to="/contact" className="nav-link">Contact</Link>
+          <nav className="nav-secondary nav-icons">
+            <Link to="/cart" className="nav-icon-link">
+              <ShoppingCart size={20} />
+              {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+            </Link>
+            <Link to={user ? "/account" : "/sign-in"} className="nav-icon-link">
+              <User size={20} />
+            </Link>
           </nav>
         </div>
 
@@ -102,7 +131,7 @@ const Header = () => {
       {/* ── Mobile menu ─────────────────────────────────────────────────── */}
       <div className={`mobile-menu ${isMenuOpen ? 'mobile-menu-open' : ''}`}>
         <nav className="mobile-nav">
-          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact']] as [string, string][]).map(([to, label]) => (
+          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact'], ['/cart', 'Cart'], [user ? '/account' : '/sign-in', user ? 'Account' : 'Sign In']] as [string, string][]).map(([to, label]) => (
             <Link key={to} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
               {label}
             </Link>
