@@ -31,9 +31,10 @@ log = logging.getLogger(__name__)
 
 # Configurable via environment variable
 DATASET_SLUG = os.getenv("KAGGLE_DATASET_SLUG", "silverstone1903/deep-fashion-multimodal")
-DATA_DIR     = Path(os.getenv("DATASET_ROOT", "./data"))
+DATA_DIR_BASE = Path(os.getenv("DATA_DIR", "./data"))
+DATA_DIR     = DATA_DIR_BASE / "kaggle"
 LABELS_CSV   = DATA_DIR / "labels_front.csv"
-IMAGES_DIR   = Path(os.getenv("IMAGES_DIR",  "./data/selected_images"))
+IMAGES_DIR   = DATA_DIR / "selected_images"
 
 
 def _inject_credentials() -> bool:

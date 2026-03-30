@@ -38,8 +38,7 @@ from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item
 from conversations import get_messages, append_message, clear_messages as clear_convo
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
-from vector_store import get_vector_store, ImageEmbedding
-from diary import init_diary_store
+from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -55,13 +54,53 @@ sio = socketio.AsyncServer(
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-IMAGES_DIR = os.getenv("IMAGES_DIR", "./data/selected_images")
-JOURNAL_DIR = Path(os.getenv("JOURNAL_DIR", "./journal"))
-DATASET_ROOT = os.getenv("DATASET_ROOT", "./data")
-LABELS_CSV = Path(DATASET_ROOT) / "labels_front.csv"
-MODEL = "gemini-3.1-pro-preview-customtools"
+
+# Single source of truth for data location
+DATA_DIR = Path(os.getenv("DATA_DIR", "./data"))
+KAGGLE_DIR = DATA_DIR / "kaggle"
+IMAGES_DIR = KAGGLE_DIR / "selected_images"
+JOURNAL_DIR = DATA_DIR / "journal"
+LABELS_CSV = KAGGLE_DIR / "labels_front.csv"
+UPLOADS_DIR = DATA_DIR / "uploads"
+
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview-customtools")
+EMBED_MODEL = "gemini-embedding-2-preview"
+THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
 
 HIST_BINS = 32
+
+# ── Journal Indexing ─────────────────────────────────────────────────────────
+
+def index_journal():
+    """Embed all journal entries and store in ChromaDB for RAG."""
+    posts = _load_journal()
+    vs = get_vector_store()
+    logger.info(f"Indexing {len(posts)} journal entries for RAG...")
+    
+    for post in posts:
+        slug = post.get("slug")
+        # Upsert is fine for Chroma
+        text_to_embed = f"{post.get('title')}\n{post.get('excerpt')}\n{post.get('body')[:1000]}"
+        try:
+            # Check if state.gemini is initialized (it is in lifespan)
+            res = state.gemini.models.embed_content(
+                model=EMBED_MODEL,
+                contents=text_to_embed,
+                config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            )
+            embedding = res.embeddings[0].values
+            
+            vs.add_journal_embedding(JournalEmbedding(
+                slug=slug,
+                embedding=embedding,
+                title=post.get("title", ""),
+                excerpt=post.get("excerpt", ""),
+                category=post.get("category", ""),
+                tags=post.get("tags", []),
+                date=post.get("date", "")
+            ))
+        except Exception as e:
+            logger.error(f"Failed to index journal {slug}: {e}")
 
 # ── Body-section search config ────────────────────────────────────────────────
 
@@ -171,15 +210,20 @@ def histogram_similarity(a: np.ndarray, b: np.ndarray) -> float:
 # ── Catalog loader ────────────────────────────────────────────────────────────
 
 def load_catalog() -> list[dict]:
+    logger.info(f"Loading catalog from: {LABELS_CSV.absolute()}")
     if not LABELS_CSV.exists():
-        logger.warning(f"Labels CSV not found: {LABELS_CSV}")
+        logger.warning(f"Labels CSV not found at: {LABELS_CSV.absolute()}")
         return []
+    
     rows = {}
     with LABELS_CSV.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             iid = row.get("image_id", "").strip()
             if iid: rows[iid] = row
+            
     images_path = Path(IMAGES_DIR)
+    logger.info(f"Scanning images in: {images_path.absolute()}")
+    
     catalog = []
     for img in sorted(images_path.glob("*.jpg")):
         row = rows.get(img.stem, {})
@@ -217,8 +261,8 @@ async def lifespan(app: FastAPI):
     state.catalog = load_catalog()
     logger.info("Initialising vector store …")
     get_vector_store()
-    logger.info("Initialising diary store …")
-    init_diary_store()
+    logger.info("Indexing journal for RAG …")
+    index_journal()
     logger.info(f"Ready. {len(state.catalog)} products. Using direct Gemini SDK.")
     yield
     logger.info("Shutting down.")
@@ -311,7 +355,28 @@ Patron history:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(journal_entry, f, indent=2)
             
-        logger.info(f"[DIARY DUMP] Saved journal entry: {slug}")
+        # Index immediately for RAG
+        try:
+            vs = get_vector_store()
+            text_to_embed = f"{journal_entry['title']}\n{journal_entry['excerpt']}\n{journal_entry['body'][:1000]}"
+            res = state.gemini.models.embed_content(
+                model=EMBED_MODEL,
+                contents=text_to_embed,
+                config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            )
+            vs.add_journal_embedding(JournalEmbedding(
+                slug=slug,
+                embedding=res.embeddings[0].values,
+                title=journal_entry["title"],
+                excerpt=journal_entry["excerpt"],
+                category=journal_entry["category"],
+                tags=journal_entry["tags"],
+                date=journal_entry["date"]
+            ))
+        except Exception as idx_err:
+            logger.error(f"[DIARY DUMP] Failed to index new entry: {idx_err}")
+
+        logger.info(f"[DIARY DUMP] Saved and indexed journal entry: {slug}")
     except Exception as e:
         logger.error(f"[DIARY DUMP] Failed to summarize journey: {e}")
 
@@ -419,7 +484,7 @@ Focus on finding actual products from the catalog."""
     parts.append(genai_types.Part(text=prompt))
 
     config = genai_types.GenerateContentConfig(
-        thinking_config=genai_types.ThinkingConfig(thinking_level="low"),
+        thinking_config=genai_types.ThinkingConfig(thinking_level=THINKING_LEVEL),
         temperature=1.0,
     )
 
@@ -473,7 +538,71 @@ async def gemini_chat_stream(
     if image_bytes:
         yield {"type": "thinking", "content": "Analysing your image with the VLA model..."}
 
-    # ── Step 1: Gemini narrative ─────────────────────────────────────────────
+    # ── Step 1: Vector RAG & Memory ──────────────────────────────────────────
+    vs = get_vector_store()
+    rag_context = ""
+    try:
+        # Generate embedding (multimodal if image present)
+        embed_contents = []
+        if image_bytes:
+            # Multimodal embedding for Gemini 2.0
+            embed_contents.append(genai_types.Content(
+                parts=[
+                    genai_types.Part(text=message),
+                    genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+                ]
+            ))
+        else:
+            embed_contents.append(message)
+
+        res = state.gemini.models.embed_content(
+            model=EMBED_MODEL,
+            contents=embed_contents,
+            config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+        )
+        query_embedding = res.embeddings[0].values
+        
+        user = get_user_from_session(ws_session_id) if ws_session_id else None
+        email = user.email if user else None
+
+        # Memorize query
+        vs.add_query_embedding(message, query_embedding, session_id=ws_session_id or "default", email=email)
+        
+        # If image present, also store in image collection
+        if image_bytes:
+            img_id = f"chat_img_{int(time.time())}"
+            vs.add_image_embedding(ImageEmbedding(
+                image_id=img_id,
+                embedding=query_embedding,
+                description=message,
+                keywords=[],
+                garment_type=None,
+                colors=[],
+                gender=None,
+                category=None,
+                user_email=email,
+                session_id=ws_session_id or "default",
+                timestamp=time.time(),
+                image_path="" # We don't have a direct path here usually, it's in-memory/chat
+            ))
+
+        # Search Journal for RAG
+        journal_hits = vs.search_journal(query_embedding, limit=3)
+        if journal_hits:
+            rag_context += "\n\n## Relevant Journal Excerpts (use these for styling advice)\n"
+            for hit in journal_hits:
+                rag_context += f"- {hit['metadata']['title']}: {hit['metadata']['excerpt']}\n"
+        
+        # Search visual memory for relevant context
+        img_memory_hits = vs.search_images_by_similarity(query_embedding, limit=2)
+        if img_memory_hits:
+            rag_context += "\n\n## Related Past Visuals from Memory\n"
+            for hit in img_memory_hits:
+                rag_context += f"- Previously encountered: {hit['metadata']['description']}\n"
+    except Exception as e:
+        logger.warning(f"RAG step failed: {e}")
+
+    # ── Step 2: Gemini narrative ─────────────────────────────────────────────
     yield {"type": "tool_call", "tool": "gemini_narrative",
            "content": "gemini_narrative — composing response..."}
 
@@ -481,7 +610,7 @@ async def gemini_chat_stream(
     if image_bytes:
         parts.append(genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
 
-    # Inject current shop state so the AI is context-aware
+    # Inject current shop state + RAG context
     ctx_lines = []
     if shop_context:
         if shop_context.gender:
@@ -489,7 +618,7 @@ async def gemini_chat_stream(
         if shop_context.category:
             ctx_lines.append(f"  Sidebar category selected: {shop_context.category}")
         if shop_context.query:
-            ctx_lines.append(f"  Human's search bar text  : \"{shop_context.query}\" (read-only — do not modify)")
+            ctx_lines.append(f"  Human's search bar text  : \"{shop_context.query}\"")
     ctx_block = ("\n\n## Current shop context\n" + "\n".join(ctx_lines)) if ctx_lines else \
                 "\n\n## Current shop context\n  Nothing selected — full archive is visible."
 
@@ -503,9 +632,14 @@ async def gemini_chat_stream(
         "Do NOT repeat or mention the GENDER token in your prose."
     ) if image_bytes else ""
 
-    parts.append(genai_types.Part(text=f"{SYSTEM_PROMPT}{ctx_block}{image_instruction}\n\nPatron: {message}"))
+    # Final prompt assembly
+    full_prompt = f"{SYSTEM_PROMPT}{ctx_block}{rag_context}{image_instruction}\n\nPatron: {message}"
+    parts.append(genai_types.Part(text=full_prompt))
 
-    config = genai_types.GenerateContentConfig(temperature=1.0)
+    config = genai_types.GenerateContentConfig(
+        thinking_config=genai_types.ThinkingConfig(thinking_level=THINKING_LEVEL),
+        temperature=1.0,
+    )
 
     try:
         response = state.gemini.models.generate_content(model=MODEL, contents=parts, config=config)
@@ -684,9 +818,8 @@ async def chat(request: ChatRequest):
     image_bytes = None
     mime_type = "image/jpeg"
     if request.image_id:
-        uploads_dir = Path("./data/uploads")
         for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = uploads_dir / f"{request.image_id}.{ext}"
+            candidate = UPLOADS_DIR / f"{request.image_id}.{ext}"
             if candidate.exists():
                 image_bytes = candidate.read_bytes()
                 mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
@@ -700,9 +833,8 @@ async def chat_stream(request: ChatRequest):
     image_bytes = None
     mime_type = "image/jpeg"
     if request.image_id:
-        uploads_dir = Path("./data/uploads")
         for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = uploads_dir / f"{request.image_id}.{ext}"
+            candidate = UPLOADS_DIR / f"{request.image_id}.{ext}"
             if candidate.exists():
                 image_bytes = candidate.read_bytes()
                 mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
@@ -724,8 +856,7 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
     
-    uploads_dir = Path("./data/uploads")
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     
     content = await file.read()
     hash_part = hashlib.md5(content).hexdigest()[:8]
@@ -733,7 +864,7 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
     image_id = f"img_{timestamp}_{hash_part}"
     
     ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
-    file_path = uploads_dir / f"{image_id}.{ext}"
+    file_path = UPLOADS_DIR / f"{image_id}.{ext}"
     file_path.write_bytes(content)
     
     logger.info(f"Uploaded image: {image_id} -> {file_path}")

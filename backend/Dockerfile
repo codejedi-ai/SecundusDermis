@@ -33,7 +33,8 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 # Directory setup
-RUN mkdir -p /app/data/selected_images && chmod -R 755 /app/data
+RUN mkdir -p /app/data/kaggle/selected_images /app/data/journal /app/data/chroma_db /app/data/uploads && \
+    chmod -R 755 /app/data
 
 EXPOSE 8000
 

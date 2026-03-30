@@ -1,4 +1,4 @@
-# Local docker-compose override (use docker-compose.example.yml as template)
+# Local docker-compose override
 docker-compose.yml
 
 # Environment files
@@ -21,25 +21,13 @@ build/
 venv/
 env/
 
-# Data files
-*.zip
-*.tar.gz
-*.tar
-*.gz
-*.bin
-*.pkl
-*.pickle
-*.feather
-*.parquet
-
-# Database / vector store
-chroma_db/
-*.sqlite3
-*.db
-
-# Data directories
+# Data (Kaggle, Chroma, Journal, Diary)
 backend/data/
 data/
+
+# Database
+*.sqlite3
+*.db
 
 # Node
 node_modules/
@@ -54,10 +42,7 @@ dist/
 *.swo
 .DS_Store
 
-# Markdown files
+# Markdown
 *.md
 !README.md
 !notebook/*.md
-
-# Journal data (AI authored JSON and originals)
-backend/journal/

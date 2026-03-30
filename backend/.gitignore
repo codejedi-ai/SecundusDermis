@@ -1,10 +1,14 @@
-data
-*.zip
-.env
+# Data directories
+data/
+
+# Python
 __pycache__/
-*.pyc
-chroma_db/
+*.py[cod]
+*.pyo
+*.pyd
 .venv/
-*.md
-!README.md
-journal/
+env/
+venv/
+
+# Env
+.env
