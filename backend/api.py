@@ -475,13 +475,13 @@ IMPORTANT: Search the catalog for products matching this request and return them
 Focus on finding actual products from the catalog."""
     parts.append(genai_types.Part(text=prompt))
 
-    config = genai_types.GenerateContentConfig(
+    gen_config = genai_types.GenerateContentConfig(
         thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
         temperature=1.0,
     )
 
     try:
-        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=config)
+        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=gen_config)
         reply = response.text or ""
         logger.info(f"[GEMINI] Reply: {reply[:150]}...")
 
@@ -628,13 +628,13 @@ async def gemini_chat_stream(
     full_prompt = f"{SYSTEM_PROMPT}{ctx_block}{rag_context}{image_instruction}\n\nPatron: {message}"
     parts.append(genai_types.Part(text=full_prompt))
 
-    config = genai_types.GenerateContentConfig(
+    gen_config = genai_types.GenerateContentConfig(
         thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
         temperature=1.0,
     )
 
     try:
-        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=config)
+        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=gen_config)
         raw_text = response.text or ""
         logger.info(f"[GEMINI STREAM] Raw: {raw_text[:150]}...")
 
