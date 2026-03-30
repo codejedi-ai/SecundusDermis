@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Star } from 'lucide-react'
 import * as fashionApi from '../services/fashionApi'
+import Footer from '../components/Footer'
 
 const FALLBACK_IMG = '/img/photo-6311392.jpg'
 
@@ -49,6 +50,7 @@ const Home = () => {
   }, [])
 
   return (
+    <>
     <div className="home">
       {/* Hero - Shopping focused */}
       <section className="hero">
@@ -165,6 +167,8 @@ const Home = () => {
         </div>
       </section>
     </div>
+    <Footer />
+    </>
   )
 }
 

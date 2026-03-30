@@ -58,8 +58,41 @@ export interface CatalogStats {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Get session ID from cookie (set by backend on login). */
+function getSessionCookie(): string | null {
+  const match = document.cookie.match(/(^| )sd_session_id=([^;]+)/);
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  // Auto-inject session-id from cookie if not already provided
+  const headersInit = init?.headers as Record<string, string> | undefined;
+  const hasSessionId = headersInit?.['session-id'];
+  
+  // If no session-id header and we have a cookie, use it
+  if (!hasSessionId) {
+    const cookieSession = getSessionCookie();
+    if (cookieSession) {
+      const newHeaders = { ...(headersInit || {}), 'session-id': cookieSession };
+      return fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: newHeaders,
+        credentials: 'include',
+      }).then(async res => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => res.statusText);
+          throw new Error(`${res.status} ${text}`);
+        }
+        return res.json() as Promise<T>;
+      });
+    }
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: headersInit,
+    credentials: 'include',
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status} ${text}`);
@@ -70,22 +103,67 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ── Endpoints ──────────────────────────────────────────────────────────────
 
 /** Unified ADK agent: conversational recommendations with tool-calling. */
-export function chat(
+export async function* chatStream(
   message: string,
+  imageId?: string,
   history: ChatMessage[] = [],
   sessionId?: string,
   authSessionId?: string,
-): Promise<ChatResponse> {
-  return request('/chat', {
+): AsyncGenerator<{
+  type: 'thinking_start' | 'thinking' | 'found_products' | 'final';
+  content?: string;
+  reply?: string;
+  products?: Product[];
+  intent?: string;
+  filter?: ShopFilter;
+  tools_used?: string[];
+  count?: number;
+}> {
+  const response = await fetch(`${API_BASE}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message,
+      image_id: imageId,
       history,
       session_id: sessionId ?? 'default',
       auth_session_id: authSessionId ?? null,
     }),
+    credentials: 'include',
   });
+
+  if (!response.ok) {
+    throw new Error(`Stream failed: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          yield parsed;
+        } catch (e) {
+          console.warn('Failed to parse stream event:', data);
+        }
+      }
+    }
+  }
 }
 
 /** Direct text-search with optional filters. */
@@ -100,17 +178,11 @@ export function searchText(
   });
 }
 
-/** Image-based search — upload a File to find visually similar products. */
-export function searchImage(
-  file: File,
-  opts: { n_results?: number; gender?: string; category?: string } = {},
-): Promise<SearchResponse> {
+/** Upload an image for agent-based image search — returns image_id for use in chat. */
+export function uploadImageForAgent(file: File): Promise<{ image_id: string; message: string }> {
   const form = new FormData();
   form.append('file', file);
-  if (opts.n_results != null) form.append('n_results', String(opts.n_results));
-  if (opts.gender) form.append('gender', opts.gender);
-  if (opts.category) form.append('category', opts.category);
-  return request('/search/image', { method: 'POST', body: form });
+  return request('/image/upload', { method: 'POST', body: form });
 }
 
 /** Paginated catalog browse — no embedding cost. */
@@ -145,58 +217,6 @@ export function getRandomProducts(
 /** Catalog statistics (categories, genders, size). */
 export function getCatalogStats(): Promise<CatalogStats> {
   return request('/catalog/stats');
-}
-
-// ── Journal ────────────────────────────────────────────────────────────────
-
-export interface JournalPost {
-  slug: string;
-  title: string;
-  excerpt: string;
-  author: string;
-  date: string;
-  category: string;
-  tags: string[];
-  featured: boolean;
-  image: string;
-  read_time: string;
-  body?: string; // only present on single-post fetch
-}
-
-export function getJournalList(opts: { category?: string; featured?: boolean } = {}): Promise<{ posts: JournalPost[]; total: number }> {
-  const params = new URLSearchParams();
-  if (opts.category) params.set('category', opts.category);
-  if (opts.featured != null) params.set('featured', String(opts.featured));
-  return request(`/journal?${params}`);
-}
-
-export function getJournalPost(slug: string): Promise<JournalPost> {
-  return request(`/journal/${slug}`);
-}
-
-export function getJournalCategories(): Promise<{ categories: string[] }> {
-  return request('/journal/categories');
-}
-
-export interface NewJournalPost {
-  title: string;
-  excerpt: string;
-  author: string;
-  date: string;
-  read_time: string;
-  category: string;
-  tags: string[];
-  featured: boolean;
-  image: string;
-  body: string;
-}
-
-export function createJournalPost(post: NewJournalPost, adminKey: string): Promise<{ slug: string; message: string }> {
-  return request('/journal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey },
-    body: JSON.stringify(post),
-  });
 }
 
 // ── Cart ──────────────────────────────────────────────────────────────────
@@ -282,7 +302,17 @@ export interface StoredMessage {
 export function getConversation(sessionId: string): Promise<StoredMessage[]> {
   return request<{ messages: StoredMessage[] }>('/conversations', {
     headers: { 'session-id': sessionId },
-  }).then(r => r.messages ?? []);
+  })
+    .then(r => r.messages ?? [])
+    .catch((err) => {
+      // Log auth errors, return empty for others
+      if (err.message?.includes('401')) {
+        console.log('[fashionApi] User not authenticated, skipping conversation fetch');
+      } else {
+        console.warn('[fashionApi] getConversation error:', err);
+      }
+      return [];
+    });
 }
 
 /** Append one message to the server-side history (requires auth). */
@@ -294,7 +324,16 @@ export function appendConversationMessage(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
     body: JSON.stringify(msg),
-  }).then(() => undefined);
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      // Log auth errors
+      if (err.message?.includes('401')) {
+        console.log('[fashionApi] User not authenticated, skipping conversation sync');
+      } else {
+        console.warn('[fashionApi] appendConversationMessage error:', err);
+      }
+    });
 }
 
 /** Clear the entire conversation history for this session (requires auth). */
@@ -302,7 +341,16 @@ export function clearConversation(sessionId: string): Promise<void> {
   return request('/conversations', {
     method: 'DELETE',
     headers: { 'session-id': sessionId },
-  }).then(() => undefined);
+  })
+    .then(() => undefined)
+    .catch((err) => {
+      // Log auth errors
+      if (err.message?.includes('401')) {
+        console.log('[fashionApi] User not authenticated, skipping conversation clear');
+      } else {
+        console.warn('[fashionApi] clearConversation error:', err);
+      }
+    });
 }
 
 /** Returns true if the backend is reachable. */

@@ -52,6 +52,8 @@
   --color-warning: #c4a35c;
   --color-info-bg: #f5f3ef;
   --color-info-border: #d9d0c3;
+  --color-red-100: #fee2e2;
+  --color-red-600: #dc2626;
 
   /* Typography */
   --font-primary: 'Inter', system-ui, -apple-system, sans-serif;

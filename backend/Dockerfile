@@ -20,4 +20,4 @@ EXPOSE 8000
 
 # Dataset is downloaded at runtime by api.py if not present
 # Configure via KAGGLE_* environment variables in docker-compose.yml
-CMD ["uv", "run", "python", "api.py"]
+CMD ["uv", "run", "python", "api.py", "--no-reload"]

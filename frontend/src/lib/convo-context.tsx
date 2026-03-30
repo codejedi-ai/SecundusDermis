@@ -12,7 +12,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './auth-context';
-import * as fashionApi from '../services/fashionApi';
+import * as chatApi from '../services/chatApi';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,7 +20,8 @@ export interface ConvoMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  products?: fashionApi.Product[];
+  products?: chatApi.Product[];
+  sections?: chatApi.ProductSection[];
   previewUrl?: string;   // blob URL for uploaded images — NOT persisted
   timestamp: number;
 }
@@ -29,7 +30,6 @@ interface ConvoContextType {
   messages: ConvoMessage[];
   chatSessionId: string;
   addMessage: (msg: Omit<ConvoMessage, 'id' | 'timestamp'>) => void;
-  clearMessages: () => void;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -107,9 +107,9 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
 
     if (authSessionId) {
       // Logged in — load history from backend, fall back to localStorage cache.
-      fashionApi
+      chatApi
         .getConversation(authSessionId)
-        .then(stored => {
+        .then((stored: any[]) => {
           if (stored.length === 0) {
             // No backend history yet; seed from localStorage cache if available.
             const local = loadLocalMessages(userEmail);
@@ -118,7 +118,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
             local
               .filter(m => m.id !== 'init')
               .forEach(m =>
-                fashionApi
+                chatApi
                   .appendConversationMessage(authSessionId, {
                     role: m.role,
                     content: m.content,
@@ -127,7 +127,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
                   .catch(() => {}),
               );
           } else {
-            const hydrated: ConvoMessage[] = stored.map(s => ({
+            const hydrated: ConvoMessage[] = stored.map((s: any) => ({
               id: crypto.randomUUID(),
               role: s.role as 'user' | 'assistant',
               content: s.content,
@@ -163,30 +163,28 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    // Best-effort sync to backend (products and previewUrl are intentionally excluded).
+    // Sync to backend only when authenticated
     if (authSessionId) {
-      fashionApi
+      chatApi
         .appendConversationMessage(authSessionId, {
           role: full.role,
           content: full.content,
           timestamp: full.timestamp,
         })
-        .catch(() => {});
-    }
-  };
-
-  // ── clearMessages ──────────────────────────────────────────────────────
-
-  const clearMessages = () => {
-    setMessages([INITIAL_MESSAGE]);
-    saveLocalMessages([INITIAL_MESSAGE], userEmail);
-    if (authSessionId) {
-      fashionApi.clearConversation(authSessionId).catch(() => {});
+        .catch((err: any) => {
+          if (err?.message?.includes('401')) {
+            console.log('[convo-context] User not authenticated, message saved to browser only');
+          } else {
+            console.warn('[convo-context] Failed to sync message to backend:', err);
+          }
+        });
+    } else {
+      console.log('[convo-context] Anonymous user, message saved to browser only');
     }
   };
 
   return (
-    <ConvoContext.Provider value={{ messages, chatSessionId, addMessage, clearMessages }}>
+    <ConvoContext.Provider value={{ messages, chatSessionId, addMessage }}>
       {children}
     </ConvoContext.Provider>
   );

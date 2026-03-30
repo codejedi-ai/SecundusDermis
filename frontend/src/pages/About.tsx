@@ -1,38 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Bot, Search, ImageIcon, BookOpen, MessageSquare } from 'lucide-react'
-
-const features = [
-  {
-    icon: <MessageSquare size={22} />,
-    title: 'Conversational AI Agent',
-    description:
-      'A Google ADK + Gemini-powered agent that understands natural language, calls search tools, and returns grounded product recommendations — never hallucinating details it hasn\'t retrieved.',
-  },
-  {
-    icon: <Search size={22} />,
-    title: 'Keyword Search',
-    description:
-      'Instant full-catalog search across 12,278 product descriptions with zero API cost. Every query runs as pure in-memory string matching.',
-  },
-  {
-    icon: <ImageIcon size={22} />,
-    title: 'Visual Search',
-    description:
-      'Upload a photo and the agent uses Gemini VLM to extract clothing keywords, then re-ranks candidates using colour histogram similarity — one API call per image search.',
-  },
-  {
-    icon: <BookOpen size={22} />,
-    title: 'Living Journal',
-    description:
-      'Editorial articles stored as markdown files on the backend. The AI agent can search and surface them in conversation. New posts can be published through the built-in editor at /blog/new.',
-  },
-  {
-    icon: <Bot size={22} />,
-    title: 'Simulated Storefront',
-    description:
-      'The "brand" is a fictional prop. The 12,278 products come from the public DeepFashion Multimodal dataset on Kaggle, downloaded automatically on first server start.',
-  },
-]
+import { ArrowRight } from 'lucide-react'
 
 const About = () => {
   return (
@@ -50,9 +17,9 @@ const About = () => {
         </div>
       </section>
 
-      {/* Purpose */}
-      <section className="about-mission">
-        <div className="mission-inner">
+      {/* Combined Purpose & Stack */}
+      <section className="about-combined">
+        <div className="combined-inner">
           <div className="mission-content">
             <span className="mission-label">Purpose</span>
             <h2 className="mission-title">Built to Explore AI-Powered Support</h2>
@@ -74,59 +41,33 @@ const About = () => {
               agents. Agents such as <strong>NanoClaw</strong> and{' '}
               <strong>OpenClaw</strong> can connect via WebSocket, read a machine-readable
               markdown manifest describing available capabilities, and autonomously drive
-              browsing, search, and support scenarios — making this a live testbed for
-              multi-agent orchestration and automated customer support evaluation.
+              browsing, search, and support scenarios.
             </p>
           </div>
-        </div>
-      </section>
 
-      {/* Feature grid */}
-      <section className="about-values">
-        <div className="values-inner">
-          <div className="values-header">
-            <span className="values-label">How it works</span>
-            <h2 className="values-title">Under the Hood</h2>
-          </div>
-          <div className="values-grid">
-            {features.map((f, i) => (
-              <div key={i} className="value-item">
-                <div className="value-icon">{f.icon}</div>
-                <h3 className="value-title">{f.title}</h3>
-                <p className="value-text">{f.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Stack */}
-      <section className="about-craft">
-        <div className="craft-image">
-          <img src="/image-craft.jpeg" alt="Craft" />
-        </div>
-        <div className="craft-content">
-          <span className="craft-label">Tech Stack</span>
-          <h2 className="craft-title">FastAPI · React · Google ADK</h2>
-          <p className="craft-text">
-            The backend is a FastAPI server that loads the DeepFashion dataset
-            from Kaggle on first run, serves the catalog, runs the Gemini agent,
-            and hosts the journal API. The frontend is a React + Vite SPA with
-            infinite-scroll catalog browsing, a markdown blog, and a persistent
-            chat widget that survives page navigation.
-          </p>
-          <p className="craft-text">
-            Gemini API calls are kept to a strict minimum: one call per chat
-            message (the agent LLM), and one VLM call per image search. All
-            catalog search is zero-cost in-memory keyword matching.
-          </p>
-          <div className="craft-actions">
-            <Link to="/shop" className="craft-link">
-              Browse the catalog
-            </Link>
-            <Link to="/blog" className="craft-link craft-link-secondary">
-              Read the journal
-            </Link>
+          <div className="craft-content">
+            <span className="craft-label">Tech Stack</span>
+            <h2 className="craft-title">FastAPI · React · Google ADK</h2>
+            <p className="craft-text">
+              The backend is a FastAPI server that loads the DeepFashion dataset
+              from Kaggle on first run, serves the catalog, runs the Gemini agent,
+              and hosts the journal API. The frontend is a React + Vite SPA with
+              infinite-scroll catalog browsing, a markdown blog, and a persistent
+              chat widget that survives page navigation.
+            </p>
+            <p className="craft-text">
+              Gemini API calls are kept to a strict minimum: one call per chat
+              message (the agent LLM), and one VLM call per image search. All
+              catalog search is zero-cost in-memory keyword matching.
+            </p>
+            <div className="craft-actions">
+              <Link to="/shop" className="craft-link">
+                Browse the catalog <ArrowRight size={16} />
+              </Link>
+              <Link to="/blog" className="craft-link craft-link-secondary">
+                Read the journal <ArrowRight size={16} />
+              </Link>
+            </div>
           </div>
         </div>
       </section>

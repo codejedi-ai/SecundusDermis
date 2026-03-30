@@ -1,43 +1,35 @@
 """
-SecundusDermis — AI Fashion Agent API
-======================================
-No setup step required — the catalog loads automatically from CSV on startup.
-
-Search strategy:
-  Text/chat  → keyword matching on in-memory catalog (zero API cost)
-  Image      → Gemini VLM extracts clothing keywords → keyword search
-               + colour histogram re-ranking of candidates
-
-Agent: Google ADK (google-adk) — LLM-only, no embedding API calls.
-
-Run with:  uv run python api.py
+SecundusDermis — AI Fashion Agent API (Direct Gemini SDK)
+==========================================================
+Uses Gemini SDK directly - NO ADK.
 """
 
+import asyncio
 import csv
+import hashlib
 import io
+import json
 import logging
 import os
 import random
 import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 import numpy as np
 from dotenv import load_dotenv
+import socketio
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from google import genai
 from google.genai import types as genai_types
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
 from PIL import Image
 from pydantic import BaseModel
 
-from agent import tools as agent_tools
-from agent.agent import create_agent
 from auth import (
     UserCreate, UserLogin, UserResponse, LoginResponse,
     create_user, authenticate_user, get_user_from_session, logout,
@@ -46,44 +38,95 @@ from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item
 from conversations import get_messages, append_message, clear_messages as clear_convo
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
+from vector_store import get_vector_store, ImageEmbedding
+from diary import init_diary_store
 
 load_dotenv(Path(__file__).parent / ".env")
 
+# ── Socket.IO server ───────────────────────────────────────────────────────────
+
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins="*",
+    logger=False,
+    engineio_logger=False,
+)
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")
-IMAGES_DIR         = os.getenv("IMAGES_DIR",  "./data/selected_images")
-JOURNAL_DIR        = Path(os.getenv("JOURNAL_DIR", "./journal"))
-DATASET_ROOT       = os.getenv("DATASET_ROOT", "./data")
-LABELS_CSV         = Path(DATASET_ROOT) / "labels_front.csv"
-AGENT_MODEL        = os.getenv("AGENT_MODEL", "gemini-3.1-pro-preview-customtools")
-VLM_MODEL          = os.getenv("VLM_MODEL",   "gemini-3.1-pro-preview")
-APP_NAME           = "secundus_dermis"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+IMAGES_DIR = os.getenv("IMAGES_DIR", "./data/selected_images")
+JOURNAL_DIR = Path(os.getenv("JOURNAL_DIR", "./journal"))
+DATASET_ROOT = os.getenv("DATASET_ROOT", "./data")
+LABELS_CSV = Path(DATASET_ROOT) / "labels_front.csv"
+MODEL = "gemini-3.1-pro-preview-customtools"
 
-HIST_BINS = 32   # 32 bins × 3 channels = 96-dim colour histogram
+HIST_BINS = 32
+
+# ── Body-section search config ────────────────────────────────────────────────
+
+BODY_SECTIONS = [
+    {
+        "id": "torso",
+        "label": "Torso — The Centerpiece",
+        "description": "Tops, shirts, and upper-body pieces",
+        "men_categories": ["Shirts_Polos", "Tees_Tanks", "Sweaters", "Sweatshirts_Hoodies"],
+        "women_categories": ["Blouses_Shirts", "Tees_Tanks", "Cardigans", "Graphic_Tees"],
+        "regex_pattern": r"shirt|blouse|top|tee|sweater|polo|button.down|knit",
+    },
+    {
+        "id": "outerwear",
+        "label": "Outerwear — The Statement Layer",
+        "description": "Jackets, coats, and statement outer layers",
+        "men_categories": ["Jackets_Vests", "Suiting"],
+        "women_categories": ["Jackets_Coats"],
+        "regex_pattern": r"jacket|coat|blazer|vest|suit|outerwear",
+    },
+    {
+        "id": "legs",
+        "label": "Legs — The Foundation",
+        "description": "Trousers, denim, and lower-body pieces",
+        "men_categories": ["Pants", "Denim", "Shorts"],
+        "women_categories": ["Pants", "Denim", "Shorts", "Skirts", "Leggings"],
+        "regex_pattern": r"pants|trousers|jeans|denim|shorts|skirt|chino|leggings",
+    },
+    {
+        "id": "full_body",
+        "label": "Full-Body Silhouette",
+        "description": "Complete ensembles and dresses",
+        "men_categories": [],
+        "women_categories": ["Dresses", "Rompers_Jumpsuits"],
+        "regex_pattern": r"dress|jumpsuit|romper|gown|maxi|midi",
+    },
+    {
+        "id": "footwear",
+        "label": "Footwear — The Anchor",
+        "description": "Shoes, boots, and footwear",
+        "men_categories": [],
+        "women_categories": [],
+        "regex_pattern": r"shoe|boot|sneaker|loafer|sandal|heel|flat|oxford|pump",
+    },
+    {
+        "id": "accessories",
+        "label": "Accessories — The Finishing Touch",
+        "description": "Belts, bags, and finishing details",
+        "men_categories": [],
+        "women_categories": [],
+        "regex_pattern": r"belt|scarf|hat|bag|watch|ring|jewel|necklace|accessory",
+    },
+]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-
 # ── Price table ───────────────────────────────────────────────────────────────
 
 _PRICE_RANGES = {
-    "Denim":               (39.99,  89.99),
-    "Jackets_Vests":       (59.99, 199.99),
-    "Pants":               (29.99,  79.99),
-    "Shorts":              (19.99,  49.99),
-    "Skirts":              (24.99,  69.99),
-    "Shirts_Polos":        (19.99,  59.99),
-    "Tees_Tanks":          (14.99,  39.99),
-    "Sweaters":            (34.99,  99.99),
-    "Sweatshirts_Hoodies": (29.99,  79.99),
-    "Dresses":             (34.99, 129.99),
-    "Suiting":             (79.99, 299.99),
-    "Blouses_Shirts":      (24.99,  69.99),
-    "Cardigans":           (34.99,  89.99),
-    "Rompers_Jumpsuits":   (39.99,  99.99),
-    "Graphic_Tees":        (14.99,  34.99),
+    "Denim": (39.99, 89.99), "Jackets_Vests": (59.99, 199.99), "Pants": (29.99, 79.99),
+    "Shorts": (19.99, 49.99), "Skirts": (24.99, 69.99), "Shirts_Polos": (19.99, 59.99),
+    "Tees_Tanks": (14.99, 39.99), "Sweaters": (34.99, 99.99), "Sweatshirts_Hoodies": (29.99, 79.99),
+    "Dresses": (34.99, 129.99), "Suiting": (79.99, 299.99), "Blouses_Shirts": (24.99, 69.99),
+    "Cardigans": (34.99, 89.99), "Rompers_Jumpsuits": (39.99, 99.99), "Graphic_Tees": (14.99, 34.99),
 }
 
 def _price(category: str) -> float:
@@ -92,231 +135,117 @@ def _price(category: str) -> float:
 
 def _extract_attrs(desc: str) -> dict:
     dl = desc.lower()
-    attrs: dict = {}
+    attrs = {}
     for s in ["short-sleeve", "long-sleeve", "sleeveless"]:
         if s in dl: attrs["sleeve_length"] = s; break
-    for g in ["shirt","t-shirt","dress","jacket","coat","sweater","blouse",
-               "pants","trousers","shorts","skirt","vest","hoodie","cardigan",
-               "suit","jumpsuit","top","jeans"]:
+    for g in ["shirt","t-shirt","dress","jacket","coat","sweater","blouse","pants","trousers","shorts","skirt","vest","hoodie","cardigan","suit","jumpsuit","top","jeans"]:
         if g in dl: attrs["garment_type"] = g; break
-    for f in ["cotton","denim","leather","silk","wool","polyester",
-               "chiffon","linen","knit","lace","velvet","satin","nylon"]:
+    for f in ["cotton","denim","leather","silk","wool","polyester","chiffon","linen","knit","lace","velvet","satin","nylon"]:
         if f in dl: attrs["fabric"] = f; break
     return attrs
 
 def _product_name(gender: str, category: str, attrs: dict) -> str:
     parts = []
-    if gender in ("MEN", "WOMEN"):
-        parts.append("Men's" if gender == "MEN" else "Women's")
-    if "fabric"        in attrs: parts.append(attrs["fabric"].title())
+    if gender in ("MEN", "WOMEN"): parts.append("Men's" if gender == "MEN" else "Women's")
+    if "fabric" in attrs: parts.append(attrs["fabric"].title())
     if "sleeve_length" in attrs: parts.append(attrs["sleeve_length"].title())
-    if "garment_type"  in attrs:
-        parts.append(attrs["garment_type"].title())
-    elif category and category != "unknown":
-        parts.append(category.replace("_", " ").title())
+    if "garment_type" in attrs: parts.append(attrs["garment_type"].title())
+    elif category and category != "unknown": parts.append(category.replace("_", " ").title())
     return " ".join(parts) if parts else "Fashion Item"
-
 
 # ── Colour histogram ──────────────────────────────────────────────────────────
 
 def color_histogram(img_source, bins: int = HIST_BINS) -> np.ndarray:
-    """Normalised RGB histogram vector. Source = file path or raw bytes."""
     if isinstance(img_source, (str, Path)):
         img = Image.open(img_source).convert("RGB").resize((64, 64))
     else:
         img = Image.open(io.BytesIO(img_source)).convert("RGB").resize((64, 64))
     arr = np.array(img, dtype=np.float32)
-    hist = np.concatenate([
-        np.histogram(arr[:, :, c], bins=bins, range=(0.0, 256.0))[0]
-        for c in range(3)
-    ]).astype(np.float32)
+    hist = np.concatenate([np.histogram(arr[:, :, c], bins=bins, range=(0.0, 256.0))[0] for c in range(3)]).astype(np.float32)
     norm = float(np.linalg.norm(hist))
     return hist / norm if norm > 0 else hist
 
-
 def histogram_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Cosine similarity between two histogram vectors."""
     return float(np.dot(a, b))
-
 
 # ── Catalog loader ────────────────────────────────────────────────────────────
 
 def load_catalog() -> list[dict]:
-    """Read CSV and return all items as a list of dicts. Zero API calls."""
     if not LABELS_CSV.exists():
-        logger.warning(f"Labels CSV not found: {LABELS_CSV} — catalog will be empty.")
+        logger.warning(f"Labels CSV not found: {LABELS_CSV}")
         return []
-
-    rows: dict[str, dict] = {}
+    rows = {}
     with LABELS_CSV.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             iid = row.get("image_id", "").strip()
-            if iid:
-                rows[iid] = row
-
+            if iid: rows[iid] = row
     images_path = Path(IMAGES_DIR)
     catalog = []
     for img in sorted(images_path.glob("*.jpg")):
-        row    = rows.get(img.stem, {})
+        row = rows.get(img.stem, {})
         gender = (row.get("gender", "") or "").strip().upper() or "unknown"
-        cat    = (row.get("product_type", "") or "").strip() or "unknown"
-        desc   = (row.get("caption", "") or "").strip()
-        attrs  = _extract_attrs(desc)
-        csv_product_id = (row.get("product_id", "") or "").strip() or img.stem
+        cat = (row.get("product_type", "") or "").strip() or "unknown"
+        desc = (row.get("caption", "") or "").strip()
+        attrs = _extract_attrs(desc)
         catalog.append({
-            "product_id":     csv_product_id,
-            "image_id":       img.stem,
-            "product_name":   _product_name(gender, cat, attrs),
-            "description":    desc,
-            "gender":         gender,
-            "category":       cat,
-            "price":          _price(cat),
-            "image_url":      f"/images/{img.name}",
-            "image_path":     str(img),
+            "product_id": img.stem, "image_id": img.stem,
+            "product_name": _product_name(gender, cat, attrs), "description": desc,
+            "gender": gender, "category": cat, "price": _price(cat),
+            "image_url": f"/images/{img.name}", "image_path": str(img),
         })
-
     logger.info(f"Loaded {len(catalog)} items from catalog.")
     return catalog
-
-
-# ── Journal loader ────────────────────────────────────────────────────────────
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Parse simple YAML-style frontmatter from a markdown file."""
-    if not text.startswith("---"):
-        return {}, text
-    lines = text.split("\n")
-    try:
-        end = next(i for i, l in enumerate(lines[1:], 1) if l.strip() == "---")
-    except StopIteration:
-        return {}, text
-    meta: dict = {}
-    for line in lines[1:end]:
-        if ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        val = val.strip().strip('"').strip("'")
-        if val.startswith("[") and val.endswith("]"):
-            val = [v.strip().strip('"').strip("'") for v in val[1:-1].split(",") if v.strip()]
-        elif val.lower() == "true":
-            val = True
-        elif val.lower() == "false":
-            val = False
-        meta[key.strip()] = val
-    body = "\n".join(lines[end + 1:]).strip()
-    return meta, body
-
-
-def load_journal() -> list[dict]:
-    """Load all .md files from JOURNAL_DIR. Returns list sorted by date desc."""
-    if not JOURNAL_DIR.exists():
-        logger.warning(f"Journal directory not found: {JOURNAL_DIR}")
-        return []
-    posts = []
-    for md_file in sorted(JOURNAL_DIR.glob("*.md")):
-        try:
-            text = md_file.read_text(encoding="utf-8")
-            meta, body = _parse_frontmatter(text)
-            posts.append({
-                "slug":      md_file.stem,
-                "title":     meta.get("title", md_file.stem),
-                "excerpt":   meta.get("excerpt", ""),
-                "author":    meta.get("author", "Secundus Dermis"),
-                "date":      meta.get("date", ""),
-                "category":  meta.get("category", ""),
-                "tags":      meta.get("tags", []),
-                "featured":  meta.get("featured", False),
-                "image":     meta.get("image", ""),
-                "read_time": meta.get("read_time", ""),
-                "body":      body,
-            })
-        except Exception as exc:
-            logger.warning(f"Failed to load journal entry {md_file}: {exc}")
-    posts.sort(key=lambda p: p["date"], reverse=True)
-    logger.info(f"Loaded {len(posts)} journal entries from {JOURNAL_DIR}")
-    return posts
-
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
 class _State:
     gemini: genai.Client | None = None
     catalog: list[dict] = []
-    journal: list[dict] = []
-    runner: Runner | None = None
-    session_service: InMemorySessionService | None = None
-    histogram_cache: dict[str, np.ndarray] = {}   # product_id → histogram (lazy)
+    histogram_cache: dict[str, np.ndarray] = {}
 
 state = _State()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set in backend/.env")
-
+        raise RuntimeError("GEMINI_API_KEY is not set")
     logger.info("Initialising Gemini client …")
     state.gemini = genai.Client(api_key=GEMINI_API_KEY)
-
     logger.info("Checking dataset …")
     download_and_extract()
-
-    logger.info("Loading catalog from CSV …")
+    logger.info("Loading catalog …")
     state.catalog = load_catalog()
-
-    logger.info("Loading journal entries …")
-    state.journal = load_journal()
-
-    logger.info("Initialising agent tools …")
-    agent_tools.init_tools(catalog=state.catalog, journal=state.journal, gemini_client=state.gemini)
-
-    logger.info(f"Creating ADK agent (model={AGENT_MODEL}) …")
-    agent = create_agent(model=AGENT_MODEL)
-    state.session_service = InMemorySessionService()
-    state.runner = Runner(
-        agent=agent,
-        app_name=APP_NAME,
-        session_service=state.session_service,
-    )
-    logger.info(f"Ready. {len(state.catalog)} products in catalog.")
-
+    logger.info("Initialising vector store …")
+    get_vector_store()
+    logger.info("Initialising diary store …")
+    init_diary_store()
+    logger.info(f"Ready. {len(state.catalog)} products. Using direct Gemini SDK.")
     yield
-
     logger.info("Shutting down.")
 
-
-# ── FastAPI app ───────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="SecundusDermis",
-    description="AI Fashion Agent — keyword search, VLM image search, conversational agent",
-    version="4.0.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app = FastAPI(title="SecundusDermis", version="5.0.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 if Path(IMAGES_DIR).exists():
     app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="product_images")
 
-
-# ── Request / Response models ─────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
     role: str
     content: str
 
+class ShopContext(BaseModel):
+    gender: Optional[str] = None
+    category: Optional[str] = None
+    query: Optional[str] = None   # human's search bar text — read-only for the AI
+
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
     session_id: str = "default"
-    auth_session_id: Optional[str] = None   # auth session for patron profile lookup
+    auth_session_id: Optional[str] = None
+    image_id: Optional[str] = None
+    shop_context: Optional[ShopContext] = None
 
 class ShopFilter(BaseModel):
     gender: Optional[str] = None
@@ -329,666 +258,635 @@ class ChatResponse(BaseModel):
     intent: str
     filter: Optional[ShopFilter] = None
 
-class TextSearchRequest(BaseModel):
-    query: str
-    n_results: int = 8
-    gender: Optional[str] = None
-    category: Optional[str] = None
-    max_price: Optional[float] = None
+class ImageUploadResponse(BaseModel):
+    image_id: str
+    message: str
 
-class ProductResult(BaseModel):
-    product_id: str
-    product_name: str
-    description: str
-    gender: str
-    category: str
-    price: float
-    similarity: float
-    image_url: str
+# ── Keyword search ────────────────────────────────────────────────────────────
 
-class SearchResponse(BaseModel):
-    results: list[ProductResult]
-    query: str
-    total: int
+_MEN_RE   = re.compile(r"\b(men'?s?|menswear|man|male|gentleman|for him)\b", re.I)
+_WOMEN_RE = re.compile(r"\b(women'?s?|womenswear|woman|female|lady|ladies|for her)\b", re.I)
+
+def _detect_gender(message: str) -> Optional[str]:
+    if _WOMEN_RE.search(message):
+        return "WOMEN"
+    if _MEN_RE.search(message):
+        return "MEN"
+    return None
 
 
-# ── In-memory keyword search ──────────────────────────────────────────────────
-
-def keyword_search(
-    keywords: str,
+def regex_search_local(
+    pattern: str,
+    categories: list[str] = None,
     gender: Optional[str] = None,
-    category: Optional[str] = None,
-    max_price: Optional[float] = None,
-    n_results: int = 16,
+    n_results: int = 8,
 ) -> list[dict]:
-    kw = keywords.lower().strip()
+    """Search catalog using a compiled regex, optionally within specific categories."""
+    try:
+        regex = re.compile(pattern, re.IGNORECASE)
+    except re.error:
+        return []
     results = []
+    seen = set()
     for item in state.catalog:
-        if kw and kw not in item["description"].lower():
+        pid = item["product_id"]
+        if pid in seen:
             continue
-        if gender and item["gender"] != gender.upper():
+        if gender and item.get("gender", "").upper() != gender.upper():
             continue
-        if category and item["category"] != category:
+        if categories and item.get("category", "") not in categories:
             continue
-        if max_price is not None and item["price"] > max_price:
-            continue
-        results.append(item)
-        if len(results) >= n_results:
-            break
+        searchable = f"{item.get('description', '')} {item.get('product_name', '')}"
+        if regex.search(searchable):
+            results.append({k: v for k, v in item.items() if k != "image_path"})
+            seen.add(pid)
+            if len(results) >= n_results:
+                break
     return results
 
 
-# ── VLM image description ─────────────────────────────────────────────────────
+def keyword_search(keywords: str, gender: Optional[str] = None, category: Optional[str] = None, n_results: int = 8) -> list[dict]:
+    """Search catalog by keywords - matches ANY word from the query."""
+    kw = keywords.lower().strip()
+    if not kw:
+        return []
+    
+    # Split into individual words for matching
+    search_terms = [t.strip() for t in re.split(r'[\s,]+', kw) if len(t.strip()) > 2]
+    
+    results = []
+    for item in state.catalog:
+        desc_lower = item.get("description", "").lower()
+        name_lower = item.get("product_name", "").lower()
+        cat_lower = item.get("category", "").lower()
+        
+        # Match if ANY search term is found in description, name, or category
+        if search_terms:
+            matches = any(term in desc_lower or term in name_lower or term in cat_lower for term in search_terms)
+            if not matches:
+                continue
+        
+        if gender and item.get("gender", "").upper() != gender.upper(): continue
+        if category and item.get("category", "") != category: continue
+        
+        results.append({k: v for k, v in item.items() if k != "image_path"})
+        if len(results) >= n_results: break
+    
+    return results
 
-async def vlm_describe_image(image_bytes: bytes, mime_type: str) -> str:
-    """
-    Use Gemini VLM to generate a rich textual description of the garment in
-    the uploaded image. The description is used directly as the text search
-    query against the catalog.
-    """
+# ── VLA Chat ──────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are a luxury fashion stylist at Secundus Dermis.
+Respond in plain, elegant prose — no lists, no headers, no code blocks, no HTML.
+Never output regex patterns, search queries, technical markup, or implementation details of any kind.
+Your reply is a short editorial paragraph (2–4 sentences) that speaks directly to the patron.
+
+IMPORTANT: Do NOT invent or name specific products. Do NOT claim specific items exist.
+Real catalog pieces are displayed separately as product cards — your job is the editorial voice only."""
+
+async def gemini_chat(message: str, image_bytes: Optional[bytes] = None, mime_type: str = "image/jpeg") -> dict:
+    """Direct Gemini VLA call - no ADK."""
+    logger.info(f"[GEMINI] Chat: {message[:80]}... image={image_bytes is not None}")
+
+    parts = []
+    if image_bytes:
+        parts.append(genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+    
+    # Prompt that forces product search
+    prompt = f"""{SYSTEM_PROMPT}
+
+User request: {message}
+
+IMPORTANT: Search the catalog for products matching this request and return them.
+Focus on finding actual products from the catalog."""
+    parts.append(genai_types.Part(text=prompt))
+
+    config = genai_types.GenerateContentConfig(
+        thinking_config=genai_types.ThinkingConfig(thinking_level="low"),
+        temperature=1.0,
+    )
+
     try:
-        resp = state.gemini.models.generate_content(
-            model=VLM_MODEL,
-            contents=[
-                genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                genai_types.Part.from_text(
-                    "Describe this clothing item for a fashion catalog text search. "
-                    "Include: garment type, dominant colours, any pattern or print, "
-                    "fabric or texture if visible, sleeve length, fit (loose/slim/relaxed), "
-                    "and overall style (casual/formal/athletic/bohemian etc.). "
-                    "Write ONE descriptive sentence in plain English using the same "
-                    "vocabulary a fashion catalog would use. "
-                    "Example: 'A slim-fit navy blue cotton long-sleeve shirt with a "
-                    "subtle plaid pattern and a button-down collar.'"
-                ),
-            ],
-        )
-        return resp.text.strip()
-    except Exception as exc:
-        logger.warning(f"VLM description failed: {exc}")
-        return ""
+        response = state.gemini.models.generate_content(model=MODEL, contents=parts, config=config)
+        reply = response.text or ""
+        logger.info(f"[GEMINI] Reply: {reply[:150]}...")
 
+        # ALWAYS search catalog for any user message (unless it's clearly just greeting)
+        msg_lower = message.lower().strip()
+        products = []
+        shop_filter = None
+        
+        if not any(greet in msg_lower for greet in ["hello", "hi ", "hey", "good morning", "good evening", "thanks", "thank you"]):
+            products = keyword_search(keywords=message, n_results=8)
+            logger.info(f"[GEMINI] Found {len(products)} products")
+            
+            # Determine filter from products - simple approach
+            if products:
+                genders = [p.get("gender") for p in products if p.get("gender") and p.get("gender") != "unknown"]
+                categories = [p.get("category") for p in products if p.get("category") and p.get("category") != "unknown"]
+                if genders or categories:
+                    shop_filter = {
+                        "gender": genders[0] if genders else None,
+                        "category": categories[0] if categories else None,
+                        "query": message,
+                    }
+                    logger.info(f"[GEMINI] Filter: {shop_filter}")
+
+        return {"reply": reply, "products": products, "intent": "text_search" if products else "chitchat", "filter": shop_filter}
+    except Exception as e:
+        logger.exception(f"[GEMINI] Error: {e}")
+        return {"reply": f"Error: {str(e)[:100]}", "products": [], "intent": "error", "filter": None}
+
+async def gemini_chat_stream(
+    message: str,
+    image_bytes: Optional[bytes] = None,
+    mime_type: str = "image/jpeg",
+    ws_session_id: Optional[str] = None,
+    shop_context: Optional[ShopContext] = None,
+) -> AsyncGenerator[dict, None]:
+    """Stream Gemini response + catalog search with real-time tool events.
+
+    When a full-body image is provided, runs the 6-section outfit analysis.
+    For text-only queries, runs a direct regex search and returns a flat product list.
+    """
+    logger.info(f"[GEMINI STREAM] Chat: {message[:80]}... image={image_bytes is not None}")
+
+    yield {"type": "thinking_start", "content": "Understanding your request..."}
+
+    if image_bytes:
+        yield {"type": "thinking", "content": "Analysing your image with the VLA model..."}
+
+    # ── Step 1: Gemini narrative ─────────────────────────────────────────────
+    yield {"type": "tool_call", "tool": "gemini_narrative",
+           "content": "gemini_narrative — composing response..."}
+
+    parts = []
+    if image_bytes:
+        parts.append(genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+
+    # Inject current shop state so the AI is context-aware
+    ctx_lines = []
+    if shop_context:
+        if shop_context.gender:
+            ctx_lines.append(f"  Sidebar gender selected : {shop_context.gender}")
+        if shop_context.category:
+            ctx_lines.append(f"  Sidebar category selected: {shop_context.category}")
+        if shop_context.query:
+            ctx_lines.append(f"  Human's search bar text  : \"{shop_context.query}\" (read-only — do not modify)")
+    ctx_block = ("\n\n## Current shop context\n" + "\n".join(ctx_lines)) if ctx_lines else \
+                "\n\n## Current shop context\n  Nothing selected — full archive is visible."
+
+    image_instruction = (
+        "\n\nAn image has been uploaded. "
+        "On the very first line of your response write exactly one of these tokens (nothing else on that line):\n"
+        "  GENDER:MEN   — if the image shows menswear / a male\n"
+        "  GENDER:WOMEN — if the image shows womenswear / a female\n"
+        "  GENDER:NONE  — if there is no person or the gender is ambiguous\n"
+        "Then, on the following lines, write 2-3 sentences describing the outfit or item in your editorial voice. "
+        "Do NOT repeat or mention the GENDER token in your prose."
+    ) if image_bytes else ""
+
+    parts.append(genai_types.Part(text=f"{SYSTEM_PROMPT}{ctx_block}{image_instruction}\n\nPatron: {message}"))
+
+    config = genai_types.GenerateContentConfig(temperature=1.0)
+
+    try:
+        response = state.gemini.models.generate_content(model=MODEL, contents=parts, config=config)
+        raw_text = response.text or ""
+        logger.info(f"[GEMINI STREAM] Raw: {raw_text[:150]}...")
+
+        # ── Parse gender token from image response ────────────────────────────
+        image_gender: Optional[str] = None
+        full_text = raw_text
+        if image_bytes:
+            first_line, _, rest = raw_text.partition("\n")
+            token = first_line.strip().upper()
+            if token == "GENDER:MEN":
+                image_gender = "MEN"
+                full_text = rest.strip()
+            elif token == "GENDER:WOMEN":
+                image_gender = "WOMEN"
+                full_text = rest.strip()
+            elif token == "GENDER:NONE":
+                full_text = rest.strip()
+            # if token doesn't match, keep full raw_text as-is
+
+        yield {"type": "tool_result", "tool": "gemini_narrative",
+               "content": "gemini_narrative → response composed"}
+
+        # ── Helper: push named event to Socket.IO room ───────────────────────
+        async def ws_push(name: str, payload: dict):
+            if ws_session_id:
+                room = f"sd_{ws_session_id}"
+                try:
+                    await sio.emit(name, payload, room=room)
+                except Exception as exc:
+                    logger.debug(f"[SOCKETIO] push '{name}' to {room} failed: {exc}")
+
+        # ── Detect gender: image takes priority, then text message ────────────
+        gender = image_gender or _detect_gender(message)
+        gender_label = f"gender={gender}" if gender else "gender=ALL"
+        yield {"type": "thinking", "content": f"Detected: {gender_label}"}
+
+        all_sections: list[dict] = []
+        all_products: list[dict] = []
+        shop_filter: Optional[dict] = None
+
+        if image_bytes:
+            # ── IMAGE PATH: section-by-section full outfit search ─────────────
+            seen_ids: set[str] = set()
+
+            for section in BODY_SECTIONS:
+                if gender == "MEN":
+                    cats = section["men_categories"]
+                elif gender == "WOMEN":
+                    cats = section["women_categories"]
+                else:
+                    cats = section["men_categories"] + section["women_categories"]
+
+                section_products: list[dict] = []
+
+                is_primary = bool(re.search(section["regex_pattern"], message, re.IGNORECASE))
+                cap = 4 if is_primary else 2
+
+                user_terms = [re.escape(t) for t in re.split(r"\s+", message.strip()) if len(t) > 2]
+                combined_pattern = "|".join(filter(None, user_terms + [section["regex_pattern"]]))
+
+                scope = f"categories={cats}" if cats else "scope='full catalog'"
+                yield {"type": "tool_call", "tool": "regex_search",
+                       "content": f"regex_search(pattern=r'{combined_pattern[:60]}', {scope})"}
+
+                rx_results: list[dict] = []
+                if cats:
+                    for cat in cats:
+                        r = regex_search_local(combined_pattern, categories=[cat], gender=gender, n_results=cap)
+                        rx_results.extend(r)
+                else:
+                    rx_results = regex_search_local(combined_pattern, gender=gender, n_results=cap)
+
+                found_label = f"{len(rx_results)} results" if rx_results else "0 results — not in archive"
+                yield {"type": "tool_result", "tool": "regex_search",
+                       "content": f"regex_search → {found_label} [{section['label'].split('—')[0].strip()}]"}
+
+                for p in rx_results:
+                    pid = p["product_id"]
+                    if pid not in seen_ids and len(section_products) < cap:
+                        section_products.append(p)
+                        seen_ids.add(pid)
+                        all_products.append(p)
+
+                if section_products:
+                    all_sections.append({
+                        "id": section["id"],
+                        "label": section["label"],
+                        "description": section["description"],
+                        "products": section_products,
+                    })
+
+            sections_with_hits = sum(1 for s in all_sections if s["products"])
+            yield {"type": "found_products", "count": len(all_products),
+                   "content": f"Found {len(all_products)} pieces across {sections_with_hits} sections"}
+
+            # If fewer than 3 zones have results the image is likely a single product,
+            # not a full outfit — collapse to a flat list and discard sections.
+            if sections_with_hits < 3:
+                all_sections = []
+
+        else:
+            # ── TEXT PATH: single direct regex search ─────────────────────────
+            user_terms = [re.escape(t) for t in re.split(r"\s+", message.strip()) if len(t) > 2]
+            combined_pattern = "|".join(user_terms) if user_terms else message.strip()
+
+            yield {"type": "tool_call", "tool": "regex_search",
+                   "content": f"regex_search(pattern=r'{combined_pattern[:80]}', gender={gender or 'ALL'})"}
+
+            all_products = regex_search_local(combined_pattern, gender=gender, n_results=12)
+
+            found_label = f"{len(all_products)} results" if all_products else "0 results"
+            yield {"type": "tool_result", "tool": "regex_search",
+                   "content": f"regex_search → {found_label}"}
+
+            if all_products:
+                yield {"type": "found_products", "count": len(all_products),
+                       "content": f"Found {len(all_products)} matching pieces"}
+
+        # ── Build shop filter ────────────────────────────────────────────────
+        if all_products:
+            genders = [p.get("gender") for p in all_products if p.get("gender") and p.get("gender") != "unknown"]
+            shop_filter = {
+                "gender": max(set(genders), key=genders.count) if genders else gender,
+                "query": message,
+            }
+
+        # ── Push ui_action events via Socket.IO ──────────────────────────────
+        await ws_push("ui_action", {
+            "action": "set_search_hint",
+            "payload": {"query": message},
+            "description": f"Hinting search bar: {message[:40]}",
+        })
+
+        if gender:
+            await ws_push("ui_action", {
+                "action": "select_sidebar",
+                "payload": {"gender": gender},
+                "description": f"Selecting sidebar gender: {gender}",
+            })
+        else:
+            await ws_push("ui_action", {
+                "action": "clear_filters",
+                "payload": {},
+                "description": "Clearing sidebar — showing full archive",
+            })
+
+        yield {
+            "type": "final",
+            "reply": full_text,
+            "sections": all_sections,
+            "products": all_products,
+            "intent": "image_search" if image_bytes else ("text_search" if all_products else "chitchat"),
+            "filter": shop_filter,
+        }
+
+    except Exception as e:
+        logger.exception(f"[GEMINI STREAM] Error: {e}")
+        yield {"type": "error", "content": str(e)[:100]}
+        yield {"type": "final", "reply": f"Error: {str(e)[:200]}", "products": [], "sections": [], "intent": "error"}
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
-    return {
-        "name": "SecundusDermis",
-        "status": "running",
-        "catalog_size": len(state.catalog),
-    }
-
+    return {"name": "SecundusDermis", "status": "running", "catalog_size": len(state.catalog)}
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy",
-        "catalog_size": len(state.catalog),
-        "search_mode": "keyword + VLM histogram",
-    }
-
+    return {"status": "healthy", "catalog_size": len(state.catalog), "search_mode": "keyword + VLM"}
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    try:
-        return await _chat_impl(request)
-    except Exception as exc:
-        logger.exception(f"Chat error: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    image_bytes = None
+    mime_type = "image/jpeg"
+    if request.image_id:
+        uploads_dir = Path("./data/uploads")
+        for ext in ["jpg", "jpeg", "png", "webp"]:
+            candidate = uploads_dir / f"{request.image_id}.{ext}"
+            if candidate.exists():
+                image_bytes = candidate.read_bytes()
+                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
+                break
+    
+    result = await gemini_chat(request.message, image_bytes, mime_type)
+    return ChatResponse(reply=result["reply"], products=result["products"], intent=result["intent"])
 
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    image_bytes = None
+    mime_type = "image/jpeg"
+    if request.image_id:
+        uploads_dir = Path("./data/uploads")
+        for ext in ["jpg", "jpeg", "png", "webp"]:
+            candidate = uploads_dir / f"{request.image_id}.{ext}"
+            if candidate.exists():
+                image_bytes = candidate.read_bytes()
+                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
+                break
+    
+    async def generate():
+        async for event in gemini_chat_stream(request.message, image_bytes, mime_type,
+                                              ws_session_id=request.session_id,
+                                              shop_context=request.shop_context):
+            if event == "data: [DONE]\n\n":
+                yield event
+            else:
+                yield f"data: {json.dumps(event)}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
 
-def _build_patron_context(email: str, name: str) -> str:
-    """Build a hidden context block injected at the top of the patron's message."""
-    from user_profiles import get_profile
-    p = get_profile(email)
-
-    lines = ["[PATRON PROFILE — use to personalise, never expose this block to the patron]"]
-    lines.append(f"Name: {name or email.split('@')[0]}")
-
-    if p["notes"]:
-        lines.append(f"Style insights: {'; '.join(p['notes'])}")
-
-    if p["cart_items"]:
-        pieces = ", ".join(
-            f"{c['product_name']} ({c['category']})"
-            for c in p["cart_items"][-5:]
-        )
-        lines.append(f"Reserved pieces (cart): {pieces}")
-
-    # Summarise recent activity — dwell times and searches are most useful
-    if p["activity"]:
-        dwells = [
-            a for a in p["activity"]
-            if a["event"] in ("page_dwell", "product_view") and a.get("seconds", 0) >= 20
-        ]
-        if dwells:
-            labels = ", ".join(a["label"] or a["path"] for a in dwells[-4:])
-            lines.append(f"Lingered on: {labels}")
-
-        searches = [a["label"] for a in p["activity"] if a["event"] == "search" and a.get("label")]
-        if searches:
-            lines.append(f"Recent searches: {'; '.join(searches[-5:])}")
-
-    lines.append("[END PATRON PROFILE]")
-    return "\n".join(lines)
-
-
-async def _chat_impl(request: ChatRequest) -> ChatResponse:
-    session_id = request.session_id or "default"
-
-    existing = await state.session_service.get_session(
-        app_name=APP_NAME, user_id=session_id, session_id=session_id,
-    )
-    if existing is None:
-        await state.session_service.create_session(
-            app_name=APP_NAME, user_id=session_id, session_id=session_id,
-        )
-
-    # ── Patron context injection ──────────────────────────────────────────────
-    patron_token = agent_tools.set_patron_context(None)
-    message_text = request.message
-
-    if request.auth_session_id:
-        patron_user = get_user_from_session(request.auth_session_id)
-        if patron_user:
-            patron_token = agent_tools.set_patron_context(patron_user.email)
-            patron_ctx = _build_patron_context(patron_user.email, patron_user.name or "")
-            message_text = f"{patron_ctx}\n\n{request.message}"
-
-    new_message = genai_types.Content(
-        role="user",
-        parts=[genai_types.Part(text=message_text)],
-    )
-
-    reply = ""
-    products: list[dict] = []
-    shop_filter: Optional[ShopFilter] = None
-
-    try:
-        async for event in state.runner.run_async(
-            user_id=session_id, session_id=session_id, new_message=new_message,
-        ):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    fn_call = getattr(part, "function_call", None)
-                    fn_resp = getattr(part, "function_response", None)
-                    if fn_call:
-                        logger.info(f"[AGENT] tool call: {fn_call.name}({fn_call.args})")
-                        if getattr(fn_call, "name", None) == "search_by_keywords":
-                            args = fn_call.args or {}
-                            shop_filter = ShopFilter(
-                                gender=args.get("gender") or None,
-                                category=args.get("category") or None,
-                                query=args.get("keywords") or None,
-                            )
-                    if fn_resp:
-                        logger.info(f"[AGENT] tool response: {fn_resp.name} → {str(fn_resp.response)[:200]}")
-                        if getattr(fn_resp, "name", None) == "search_by_keywords":
-                            prods = (fn_resp.response or {}).get("products", [])
-                            if prods:
-                                products = prods
-
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    reply = event.content.parts[0].text or ""
-                    logger.info(f"[AGENT] final reply (tool used: {bool(products)}): {reply[:120]}")
-    finally:
-        agent_tools._patron_email_ctx.reset(patron_token)
-
-    intent = "text_search" if products else "chitchat"
-    return ChatResponse(reply=reply, products=products, intent=intent, filter=shop_filter)
-
-
-@app.post("/search/text", response_model=SearchResponse)
-async def search_text(request: TextSearchRequest):
-    results = keyword_search(
-        keywords=request.query,
-        gender=request.gender,
-        category=request.category,
-        max_price=request.max_price,
-        n_results=request.n_results,
-    )
-    return SearchResponse(
-        results=[ProductResult(similarity=1.0, **{k: v for k, v in r.items() if k != "image_path"})
-                 for r in results],
-        query=request.query,
-        total=len(results),
-    )
-
-
-_STOP_WORDS = {
-    "a", "an", "the", "with", "and", "or", "of", "in", "on", "for",
-    "is", "are", "has", "its", "that", "this", "it", "at", "by",
-}
-
-
-def _text_score_candidates(
-    description: str,
-    gender: Optional[str],
-    category: Optional[str],
-    pool_size: int,
-) -> list[dict]:
-    """
-    Score every catalog item by how many terms from `description` appear in
-    its text fields. Returns items sorted by match count descending.
-    """
-    raw_terms = re.split(r"[\s,.\-/()]+", description.lower())
-    terms = [t for t in raw_terms if len(t) > 2 and t not in _STOP_WORDS]
-
-    if not terms:
-        # No meaningful terms — return a broad filter slice
-        return keyword_search("", gender=gender, category=category, n_results=pool_size)
-
-    scored: dict[str, tuple[int, dict]] = {}
-    for item in state.catalog:
-        if gender and item["gender"] != gender.upper():
-            continue
-        if category and item["category"] != category:
-            continue
-        searchable = (
-            item.get("description", "").lower()
-            + " "
-            + item.get("product_name", "").lower()
-        )
-        match_count = sum(1 for t in terms if t in searchable)
-        if match_count > 0:
-            pid = item["product_id"]
-            if pid not in scored or match_count > scored[pid][0]:
-                scored[pid] = (match_count, item)
-
-    sorted_items = sorted(scored.values(), key=lambda x: x[0], reverse=True)
-    return [item for _, item in sorted_items[:pool_size]]
-
-
-@app.post("/search/image", response_model=SearchResponse)
-async def search_image(
-    file: UploadFile = File(...),
-    n_results: int = 8,
-    gender: Optional[str] = None,
-    category: Optional[str] = None,
-):
+@app.post("/image/upload", response_model=ImageUploadResponse)
+async def upload_image_for_agent(file: UploadFile = File(...)):
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
+    
+    uploads_dir = Path("./data/uploads")
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    
+    content = await file.read()
+    hash_part = hashlib.md5(content).hexdigest()[:8]
+    timestamp = int(time.time())
+    image_id = f"img_{timestamp}_{hash_part}"
+    
+    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
+    file_path = uploads_dir / f"{image_id}.{ext}"
+    file_path.write_bytes(content)
+    
+    logger.info(f"Uploaded image: {image_id} -> {file_path}")
+    return ImageUploadResponse(image_id=image_id, message="Image uploaded successfully")
 
-    image_bytes = await file.read()
+# ── Auth, Cart, etc (simplified) ──────────────────────────────────────────────
 
-    # ── Step 1: VLM → rich textual description ────────────────────────────────
-    vlm_description = await vlm_describe_image(image_bytes, mime_type=file.content_type)
-    logger.info(f"VLM description for {file.filename!r}: {vlm_description!r}")
+@app.post("/auth/register", response_model=UserResponse, status_code=201)
+async def register(user: UserCreate):
+    result = create_user(email=user.email, password=user.password, name=user.name)
+    if result is None: raise HTTPException(status_code=400, detail="Email already registered")
+    return result
 
-    # ── Step 2: Text search — score catalog by VLM description term matches ───
-    # Generous pool so the histogram re-ranker has enough to work with.
-    pool_size = max(n_results * 6, 48)
-    candidates = _text_score_candidates(vlm_description, gender, category, pool_size)
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(user: UserLogin):
+    session_id = authenticate_user(email=user.email, password=user.password)
+    if session_id is None: raise HTTPException(status_code=401, detail="Invalid credentials")
+    user_resp = get_user_from_session(session_id)
+    response = JSONResponse(content={"session_id": session_id, "user": {"email": user_resp.email, "name": user_resp.name}})
+    response.set_cookie(key="sd_session_id", value=session_id, max_age=30*24*60*60, httponly=True, samesite="lax", path="/")
+    return response
 
-    # Fallback: if VLM produced nothing useful, use broad gender/category slice
-    if not candidates:
-        candidates = keyword_search("", gender=gender, category=category, n_results=pool_size)
+@app.post("/auth/logout")
+async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if session_id: logout(session_id)
+    response = JSONResponse(content={"status": "logged out"})
+    response.delete_cookie(key="sd_session_id", path="/")
+    return response
 
-    # ── Step 3: Histogram re-ranking — applied only on text search candidates ─
-    # The histogram never runs independently; it only re-sorts an existing set.
-    query_hist = color_histogram(image_bytes)
-    re_scored: list[tuple[float, dict]] = []
-    for item in candidates:
-        pid = item["product_id"]
-        try:
-            if pid not in state.histogram_cache:
-                state.histogram_cache[pid] = color_histogram(item["image_path"])
-            hist_sim = histogram_similarity(query_hist, state.histogram_cache[pid])
-        except Exception:
-            hist_sim = 0.0
-        re_scored.append((hist_sim, item))
+@app.get("/auth/me")
+async def get_current_user(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user: raise HTTPException(status_code=401, detail="Invalid session")
+    return user
 
-    re_scored.sort(key=lambda x: x[0], reverse=True)
+@app.get("/cart", response_model=CartResponse)
+async def get_user_cart(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: return CartResponse(items=[], total=0.0)
+    return get_cart(session_id)
 
-    results = [
-        ProductResult(
-            similarity=round(sim, 4),
-            **{k: v for k, v in item.items() if k != "image_path"},
-        )
-        for sim, item in re_scored[:n_results]
-    ]
-    return SearchResponse(
-        results=results,
-        query=f"[image] {vlm_description[:120]}",
-        total=len(results),
-    )
+@app.post("/cart", response_model=CartResponse)
+async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: raise HTTPException(status_code=401, detail="No session")
+    return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
 
-
-@app.get("/catalog/product/{product_id}")
-async def catalog_product(product_id: str):
-    """Return a single product by ID directly from the in-memory catalog."""
-    item = next((p for p in state.catalog if p["product_id"] == product_id), None)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return {k: v for k, v in item.items() if k != "image_path"}
-
-
-@app.get("/catalog/stats")
-async def catalog_stats():
-    cats, genders = set(), set()
-    for item in state.catalog:
-        cats.add(item["category"])
-        genders.add(item["gender"])
-    return {
-        "total_products": len(state.catalog),
-        "categories":     sorted(cats),
-        "genders":        sorted(genders),
-    }
-
+@app.delete("/cart/{product_id}", response_model=CartResponse)
+async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: raise HTTPException(status_code=401, detail="No session")
+    return remove_from_cart(session_id, product_id)
 
 @app.get("/catalog/browse")
-async def catalog_browse(
-    offset: int = 0,
-    limit: int = 24,
-    gender: Optional[str] = None,
-    category: Optional[str] = None,
-    q: Optional[str] = None,
-):
+async def catalog_browse(offset: int = 0, limit: int = 24, gender: Optional[str] = None, category: Optional[str] = None, q: Optional[str] = None):
     limit = min(max(1, limit), 48)
-    q_lower = q.lower().strip() if q else ""
-    filtered = [
-        item for item in state.catalog
-        if (not gender   or item["gender"]   == gender.upper())
-        and (not category or item["category"] == category)
-        and (not q_lower or q_lower in item.get("product_name", "").lower()
-                         or q_lower in item.get("description", "").lower())
-    ]
-    page = filtered[offset : offset + limit]
-    return {
-        "products": [{k: v for k, v in p.items() if k != "image_path"} for p in page],
-        "offset":   offset,
-        "limit":    limit,
-        "total":    len(filtered),
-    }
-
+    # Split query into individual words; show item if ANY word appears in description or name
+    words = [w for w in q.lower().split() if w] if q else []
+    def _matches(item: dict) -> bool:
+        if gender and item["gender"] != gender.upper():
+            return False
+        if category and item["category"] != category:
+            return False
+        if not words:
+            return True
+        haystack = f"{item.get('description', '')} {item.get('product_name', '')}".lower()
+        return any(w in haystack for w in words)
+    filtered = [item for item in state.catalog if _matches(item)]
+    page = filtered[offset:offset + limit]
+    return {"products": [{k: v for k, v in p.items() if k != "image_path"} for p in page], "offset": offset, "limit": limit, "total": len(filtered)}
 
 @app.get("/catalog/random")
 async def catalog_random(n: int = 12):
-    sample = random.sample(state.catalog, min(n, len(state.catalog)))
+    """Return n random products for the home page hero."""
+    import random as _random
+    sample = _random.sample(state.catalog, min(n, len(state.catalog)))
     return {"products": [{k: v for k, v in p.items() if k != "image_path"} for p in sample]}
+
+
+# ── Journal endpoints ─────────────────────────────────────────────────────────
+
+def _parse_journal_post(path: Path) -> Optional[dict]:
+    """Parse a markdown file with YAML front-matter into a post dict."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            return None
+        _, fm, body = text.split("---", 2)
+        import yaml
+        meta = yaml.safe_load(fm) or {}
+        meta["slug"] = path.stem
+        meta["body"] = body.strip()
+        meta.setdefault("tags", [])
+        meta.setdefault("featured", False)
+        meta.setdefault("image", "/image-blog.jpeg")
+        meta.setdefault("read_time", "3 min read")
+        return meta
+    except Exception:
+        return None
+
+
+def _load_journal() -> list[dict]:
+    posts = []
+    for p in sorted(JOURNAL_DIR.glob("*.md")):
+        post = _parse_journal_post(p)
+        if post:
+            posts.append(post)
+    return posts
 
 
 @app.get("/journal")
 async def journal_list(category: Optional[str] = None, featured: Optional[bool] = None):
-    """List all journal entries (without body). Optionally filter by category or featured."""
-    posts = state.journal
+    posts = _load_journal()
     if category:
-        posts = [p for p in posts if p["category"] == category]
+        posts = [p for p in posts if p.get("category", "").lower() == category.lower()]
     if featured is not None:
-        posts = [p for p in posts if p["featured"] == featured]
-    return {"posts": [{k: v for k, v in p.items() if k != "body"} for p in posts], "total": len(posts)}
+        posts = [p for p in posts if bool(p.get("featured")) == featured]
+    previews = [{k: v for k, v in p.items() if k != "body"} for p in posts]
+    return {"posts": previews, "total": len(previews)}
 
 
 @app.get("/journal/categories")
 async def journal_categories():
-    """Return all unique categories in the journal."""
-    cats = sorted({p["category"] for p in state.journal if p["category"]})
+    posts = _load_journal()
+    cats = sorted({p.get("category", "") for p in posts if p.get("category")})
     return {"categories": cats}
 
 
 @app.get("/journal/{slug}")
 async def journal_post(slug: str):
-    """Return a single journal entry including its markdown body."""
-    post = next((p for p in state.journal if p["slug"] == slug), None)
-    if post is None:
-        raise HTTPException(status_code=404, detail="Journal entry not found")
+    path = JOURNAL_DIR / f"{slug}.md"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Post not found")
+    post = _parse_journal_post(path)
+    if not post:
+        raise HTTPException(status_code=404, detail="Could not parse post")
     return post
 
 
-class NewJournalPost(BaseModel):
-    title: str
-    excerpt: str
-    author: str
-    date: str          # YYYY-MM-DD
-    read_time: str
-    category: str
-    tags: list[str] = []
-    featured: bool = False
-    image: str = ""
-    body: str
-
-
-@app.post("/journal", status_code=201)
-async def journal_create(
-    post: NewJournalPost,
-    x_admin_key: Optional[str] = Header(default=None),
-    session_id: Optional[str] = Header(default=None),
-):
-    """Create a new journal entry. Requires admin key OR authenticated user session."""
-    # Check auth: either valid admin_key OR logged-in user
-    admin_key = os.getenv("ADMIN_KEY", "change-me-before-deploy")
-    is_admin = x_admin_key == admin_key
-    is_authenticated = session_id and get_user_from_session(session_id) is not None
-    
-    if not is_admin and not is_authenticated:
-        raise HTTPException(status_code=401, detail="Admin key or valid session required")
-
-    # Build slug from title
-    slug = re.sub(r"[^a-z0-9]+", "-", post.title.lower()).strip("-")
-    filename = JOURNAL_DIR / f"{slug}.md"
-    if filename.exists():
-        raise HTTPException(status_code=409, detail=f"Slug already exists: {slug}")
-
-    # Use logged-in user's name as author if not provided
-    author = post.author
-    if is_authenticated and not author:
-        user = get_user_from_session(session_id)
-        if user:
-            author = user.name or user.email
-
-    tags_str = ", ".join(f'"{t}"' for t in post.tags) if post.tags else ""
-    frontmatter = f"""---
-title: "{post.title}"
-excerpt: "{post.excerpt}"
-author: "{author or 'Secundus Dermis'}"
-date: "{post.date}"
-read_time: "{post.read_time}"
-category: "{post.category}"
-tags: [{tags_str}]
-featured: {str(post.featured).lower()}
-image: "{post.image}"
+@app.post("/journal")
+async def create_journal_post(post: dict, session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id or not get_user_from_session(session_id):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    slug = re.sub(r"[^a-z0-9]+", "-", post.get("title", "untitled").lower()).strip("-")
+    path = JOURNAL_DIR / f"{slug}.md"
+    tags = "\n".join(f'  - "{t}"' for t in post.get("tags", []))
+    content = f"""---
+title: "{post.get('title', '')}"
+excerpt: "{post.get('excerpt', '')}"
+author: "{post.get('author', '')}"
+date: "{post.get('date', '')}"
+category: "{post.get('category', '')}"
+tags:
+{tags}
+featured: {str(post.get('featured', False)).lower()}
+image: "{post.get('image', '/image-blog.jpeg')}"
+read_time: "{post.get('read_time', '3 min read')}"
 ---
 
-{post.body}
+{post.get('body', '')}
 """
-    filename.write_text(frontmatter, encoding="utf-8")
-    # Reload journal in memory
-    state.journal = load_journal()
-    agent_tools.init_tools(state.catalog, journal=state.journal)
-    logger.info(f"Created journal entry: {slug}")
-    return {"slug": slug, "message": "Created"}
+    path.write_text(content, encoding="utf-8")
+    return {"slug": slug, "message": "Post created"}
 
 
-# ── Authentication Endpoints ─────────────────────────────────────────────────
+@app.get("/catalog/product/{product_id}")
+async def catalog_product(product_id: str):
+    item = next((p for p in state.catalog if p["product_id"] == product_id), None)
+    if item is None: raise HTTPException(status_code=404, detail="Product not found")
+    return {k: v for k, v in item.items() if k != "image_path"}
 
-@app.post("/auth/register", response_model=UserResponse, status_code=201)
-async def register(user: UserCreate):
-    """Register a new user."""
-    result = create_user(email=user.email, password=user.password, name=user.name)
-    if result is None:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    return result
+# ── Socket.IO event handlers ──────────────────────────────────────────────────
 
-
-@app.post("/auth/login", response_model=LoginResponse)
-async def login(user: UserLogin):
-    """Login and get session."""
-    session_id = authenticate_user(email=user.email, password=user.password)
-    if session_id is None:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    user_resp = get_user_from_session(session_id)
-    return LoginResponse(session_id=session_id, user=user_resp)
+@sio.on("connect")
+async def on_connect(sid, environ):
+    logger.info(f"[SOCKETIO] Client connected: {sid}")
 
 
-@app.post("/auth/logout")
-async def logout_endpoint(session_id: str = Header(default=None)):
-    """Logout and invalidate session."""
+@sio.on("disconnect")
+async def on_disconnect(sid):
+    logger.info(f"[SOCKETIO] Client disconnected: {sid}")
+
+
+@sio.on("join_session")
+async def on_join_session(sid, data):
+    """Client sends { session_id } to subscribe to its personal event room."""
+    session_id = (data or {}).get("session_id", "")
     if session_id:
-        logout(session_id)
-    return {"status": "logged out"}
+        room = f"sd_{session_id}"
+        await sio.enter_room(sid, room)
+        await sio.emit("connected", {"session_id": session_id, "status": "joined"}, to=sid)
+        logger.info(f"[SOCKETIO] {sid} joined room {room}")
 
 
-@app.get("/auth/me", response_model=UserResponse)
-async def get_current_user(session_id: str = Header(default=None)):
-    """Get current user from session."""
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session")
-    user = get_user_from_session(session_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    return user
+@sio.on("ping")
+async def on_ping(sid, data):
+    await sio.emit("pong", {}, to=sid)
 
 
-# ── Cart Endpoints ───────────────────────────────────────────────────────────
+# ── Wrap FastAPI with Socket.IO ───────────────────────────────────────────────
+# All /socket.io/* requests are handled by Socket.IO;
+# everything else is forwarded to the FastAPI app.
 
-@app.get("/cart", response_model=CartResponse)
-async def get_user_cart(session_id: str = Header(default=None)):
-    """Get user's cart."""
-    if not session_id:
-        return CartResponse(items=[], total=0.0)
-    return get_cart(session_id)
-
-
-@app.post("/cart", response_model=CartResponse)
-async def add_item_to_cart(
-    product_id: str,
-    product_name: str,
-    price: float,
-    image_url: str,
-    quantity: int = 1,
-    session_id: str = Header(default=None),
-):
-    """Add item to cart. Also records the piece in the patron's profile."""
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session")
-
-    result = add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
-
-    # Record in patron profile so AI knows what they reserved
-    user = get_user_from_session(session_id)
-    if user:
-        # Look up description and category from catalog
-        item = next((p for p in state.catalog if p["product_id"] == product_id), None)
-        description = item.get("description", "") if item else ""
-        category = item.get("category", "") if item else ""
-        profile_add_cart(user.email, product_id, product_name, description, category)
-        profile_record_activity(user.email, "cart_add", f"/product/{product_id}", product_name)
-
-    return result
-
-
-class CartUpdateRequest(BaseModel):
-    quantity: int
-
-
-@app.put("/cart/{product_id}", response_model=CartResponse)
-async def update_cart_item_endpoint(
-    product_id: str,
-    update: CartUpdateRequest,
-    session_id: str = Header(default=None),
-):
-    """Update cart item quantity."""
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session")
-    return update_cart_item(session_id, product_id, update.quantity)
-
-
-@app.delete("/cart/{product_id}", response_model=CartResponse)
-async def remove_cart_item_endpoint(
-    product_id: str,
-    session_id: str = Header(default=None),
-):
-    """Remove item from cart."""
-    if not session_id:
-        raise HTTPException(status_code=401, detail="No session")
-    user = get_user_from_session(session_id)
-    if user:
-        profile_record_activity(user.email, "cart_remove", f"/product/{product_id}", product_id)
-    return remove_from_cart(session_id, product_id)
-
-
-@app.delete("/cart", response_model=CartResponse)
-async def clear_user_cart(session_id: str = Header(default=None)):
-    """Clear entire cart."""
-    if not session_id:
-        return CartResponse(items=[], total=0.0)
-    return clear_cart(session_id)
-
-
-# ── Patron Activity Endpoint ─────────────────────────────────────────────────
-
-class ActivityEvent(BaseModel):
-    event: str          # "page_view" | "product_view" | "page_dwell" | "search"
-    path: str = ""
-    label: str = ""     # product name or search query
-    seconds: int = 0
-
-
-@app.post("/patron/activity", status_code=204)
-async def record_patron_activity(
-    body: ActivityEvent,
-    session_id: str = Header(default=None),
-):
-    """Record a browser activity event for the authenticated patron."""
-    if not session_id:
-        return
-    user = get_user_from_session(session_id)
-    if user:
-        profile_record_activity(user.email, body.event, body.path, body.label, body.seconds)
-
-
-# ── Conversation History Endpoints ───────────────────────────────────────────
-
-class ConvoMessage(BaseModel):
-    role: str       # 'user' | 'assistant'
-    content: str
-    timestamp: float
-
-
-@app.get("/conversations")
-async def get_conversation(session_id: str = Header(default=None)):
-    """Return stored conversation messages for the authenticated user."""
-    if not session_id or not get_user_from_session(session_id):
-        raise HTTPException(status_code=401, detail="Auth required")
-    return {"messages": get_messages(session_id)}
-
-
-@app.post("/conversations", status_code=201)
-async def post_conversation_message(
-    msg: ConvoMessage,
-    session_id: str = Header(default=None),
-):
-    """Append a single message to the authenticated user's conversation history."""
-    if not session_id or not get_user_from_session(session_id):
-        raise HTTPException(status_code=401, detail="Auth required")
-    messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
-    return {"messages": messages}
-
-
-@app.delete("/conversations")
-async def delete_conversation(session_id: str = Header(default=None)):
-    """Clear all conversation history for the authenticated user."""
-    if not session_id or not get_user_from_session(session_id):
-        raise HTTPException(status_code=401, detail="Auth required")
-    clear_convo(session_id)
-    return {"messages": []}
-
-
-# ── Serve React SPA (when running as single container) ────────────────────────
-_FRONTEND_DIR = Path(os.getenv("FRONTEND_DIR", "./static"))
-
-if _FRONTEND_DIR.exists():
-    _assets = _FRONTEND_DIR / "assets"
-    if _assets.exists():
-        app.mount("/assets", StaticFiles(directory=_assets), name="spa_assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        return FileResponse(_FRONTEND_DIR / "index.html")
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 
 if __name__ == "__main__":
+    import argparse
     import uvicorn
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-reload", dest="reload", action="store_false",
+                        help="Disable hot reload (used in production/Docker)")
+    parser.set_defaults(reload=True)
+    args = parser.parse_args()
+    uvicorn.run("api:socket_app", host="0.0.0.0", port=8000, reload=args.reload)

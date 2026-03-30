@@ -2,23 +2,23 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { Calendar, User, Clock, ArrowLeft } from 'lucide-react'
-import * as fashionApi from '../services/fashionApi'
+import * as blogApi from '../services/blogApi'
 
 export default function BlogPost() {
   const { id } = useParams<{ id: string }>()  // "id" param = slug
   const navigate = useNavigate()
-  const [post, setPost] = useState<fashionApi.JournalPost | null>(null)
-  const [related, setRelated] = useState<fashionApi.JournalPost[]>([])
+  const [post, setPost] = useState<blogApi.JournalPost | null>(null)
+  const [related, setRelated] = useState<blogApi.JournalPost[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!id) return
     window.scrollTo(0, 0)
     setLoading(true)
-    fashionApi.getJournalPost(id)
+    blogApi.getJournalPost(id)
       .then(p => {
         setPost(p)
-        return fashionApi.getJournalList()
+        return blogApi.getJournalList()
       })
       .then(list => {
         setRelated(list.posts.filter(p => p.slug !== id).slice(0, 3))

@@ -9,7 +9,7 @@
  *   - Time spent on each page (page_dwell, if >= DWELL_THRESHOLD seconds)
  *   - Product pages visited (product_view)
  */
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from './auth-context';
 import * as fashionApi from '../services/fashionApi';
@@ -61,8 +61,4 @@ export function MonitorProvider({ children }: { children: React.ReactNode }) {
       {children}
     </MonitorContext.Provider>
   );
-}
-
-export function useMonitor() {
-  return useContext(MonitorContext);
 }

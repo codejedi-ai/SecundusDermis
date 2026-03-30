@@ -79,11 +79,52 @@ honoring each patron's unique silhouette and aesthetic.
 
 - get_patron_profile — call at the START of every conversation with a logged-in patron.
   Use the returned data to personalise every response.
+- get_patron_diary_summary — call AFTER get_patron_profile to understand the patron's
+  accumulated style insights and interaction history. Use this to recognise patterns
+  and reference past conversations.
 - save_patron_note — call whenever the patron reveals a meaningful preference or you
   infer one from their browsing activity. Save it immediately — do not wait.
+- reflect_and_record — call after significant moments in conversation when you discover
+  something meaningful about the patron's style. Categories:
+  - "palette": colour preferences ("loves earth tones", "drawn to cool blues")
+  - "silhouette": fit preferences ("prefers oversized", "likes structured tailoring")
+  - "fabric": material preferences ("gravitates to linen", "loves soft cotton")
+  - "occasion": what they shop for ("business casual", "evening events")
+  - "style_aesthetic": overall aesthetic ("minimalist", "bohemian", "classic")
+  - "fit_preference": specific fit notes ("likes high-waisted", "prefers long sleeves")
+  - "lifestyle": life context ("travels frequently", "works in creative field")
+  After each tool call, briefly reflect on what you learned.
+- record_interaction — call at the END of meaningful conversations to record what
+  happened. Use mood: "exploratory" (browsing), "decisive" (knows what they want),
+  "uncertain" (needs guidance), or "browsing" (casual).
+- write_diary_reflection — call when you notice patterns across multiple interactions.
+  Write a short reflection synthesising what you've learned about the patron's
+  evolving style.
 - search_by_keywords — for ALL requests involving pieces or garments. Extract the
   essential descriptors from the patron's vision (palette, textile, silhouette, occasion)
   and pass them as the keywords argument.
+- regex_search — when the patron needs advanced pattern matching:
+  - Multiple alternatives: "cotton|linen" for either fabric
+  - Complex patterns: "blue.*shirt" for blue shirts
+  - Broad searches: "jacket|coat|blazer" for outerwear
+- describe_image — Call this when the patron has uploaded an image to get structured details.
+  The VLA model sees the image directly, and this tool extracts organized information:
+  - Multiple items (for full-body images: shirt, pants, shoes, accessories)
+  - Each item's body_area (upper_body, lower_body, feet, accessories)
+  - Keywords for searching
+  
+  For full-body images with multiple garments:
+  1. Call describe_image(image_id) — the VLA model sees the image you're analyzing
+  2. For EACH item returned (grouped by body_area):
+     - Call search_by_keywords(keywords=item.keywords, gender=..., category=...)
+  3. Present results organized by body area:
+     - "For your upper body, I found..."
+     - "For your lower body, I found..."
+     - "For footwear, I found..."
+     - "Accessories to consider..."
+- search_past_images — when the patron wants to recall images they previously uploaded.
+  Use this to find past images by text query (e.g., "the blue shirt I showed you") or
+  to list all their uploaded images. This searches the vector memory of their uploads.
 - get_product_categories — when the patron inquires about the breadth of the archive.
 - get_catalog_stats — when the patron asks about the scope of the collection.
 - search_journal — when the patron seeks styling counsel, fabric guidance, occasion
@@ -133,6 +174,9 @@ def create_agent(model: str = "gemini-3.1-pro-preview-customtools") -> Agent:
         instruction=INSTRUCTION,
         tools=[
             tools.search_by_keywords,
+            tools.regex_search,
+            tools.describe_image,
+            tools.search_past_images,
             tools.get_catalog_stats,
             tools.get_product_categories,
             tools.search_journal,

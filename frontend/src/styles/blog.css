@@ -225,9 +225,6 @@
 
 .blog-title {
   margin-bottom: var(--space-3);
-}
-
-.blog-title a {
   font-family: var(--font-display);
   color: var(--color-primary);
   font-size: 1.25rem;
@@ -236,8 +233,23 @@
   transition: color var(--transition-fast);
 }
 
-.blog-title a:hover {
+.blog-card-link:hover .blog-title {
   color: var(--color-gray-600);
+}
+
+.featured-card-link:hover .featured-title {
+  color: var(--color-gray-600);
+}
+
+.featured-card-link:hover .featured-image img {
+  transform: scale(1.02);
+}
+
+.featured-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-slow);
 }
 
 .blog-excerpt {

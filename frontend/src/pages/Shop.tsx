@@ -32,7 +32,11 @@ export default function Shop() {
       const next = off + res.products.length
       offsetRef.current = next
       setOffset(next)
-      setProducts(prev => off === 0 ? res.products : [...prev, ...res.products])
+      setProducts(prev => {
+        const merged = off === 0 ? res.products : [...prev, ...res.products]
+        const seen = new Set<string>()
+        return merged.filter(p => seen.has(p.product_id) ? false : (seen.add(p.product_id), true))
+      })
     } catch {
       // backend offline — silent
     } finally {

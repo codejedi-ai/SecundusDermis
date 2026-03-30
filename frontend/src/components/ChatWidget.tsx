@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { ImagePlus, Loader2, MessageCircle, Send, X } from 'lucide-react';
-import * as fashionApi from '../services/fashionApi';
+import { ImagePlus, Loader2, MessageCircle, Send, X, Trash2, Sparkles, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
+import * as chatApi from '../services/chatApi';
 import { useShop } from '../lib/shop-context';
 import { useConvo } from '../lib/convo-context';
 import { useAuth } from '../lib/auth-context';
@@ -10,6 +10,17 @@ import { useAuth } from '../lib/auth-context';
 // ── Types ──────────────────────────────────────────────────────────────────
 
 const FALLBACK_IMAGE = '/img/photo-6311392.jpg';
+
+interface PendingImage {
+  file: File;
+  previewUrl: string;
+}
+
+interface ThinkingStep {
+  kind: 'thinking' | 'tool_call' | 'tool_result';
+  content: string;
+  tool?: string;
+}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -20,85 +31,141 @@ export default function ChatWidget() {
 
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [loading, setLoading] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const [showThinking, setShowThinking] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { setGender, setCategory, setQuery, setInputValue } = useShop();
-  const navigate = useNavigate();
-
-  // Return the value that appears in >= threshold fraction of the array, or null
-  function dominant(arr: string[], threshold = 0.8): string | null {
-    if (!arr.length) return null;
-    const counts: Record<string, number> = {};
-    for (const v of arr) if (v && v !== 'unknown') counts[v] = (counts[v] || 0) + 1;
-    const [top, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] ?? [];
-    return top && count / arr.length >= threshold ? top : null;
-  }
+  const { gender, category, query, setGender, setCategory } = useShop();
 
   // Check backend availability once on mount
   useEffect(() => {
-    fashionApi.checkHealth().then(setOnline);
+    chatApi.checkHealth().then(setOnline);
   }, []);
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [messages, loading, pendingImage]);
 
-  // ── Text send ────────────────────────────────────────────────────────────
+  // ── Send message (text + optional image) ─────────────────────────────────
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || loading) return;
+    const hasImage = !!pendingImage;
+
+    // Require at least text or image
+    if ((!text && !hasImage) || loading) return;
+
+    // Capture and clear state
+    const imageToSend = pendingImage;
+    setPendingImage(null);
     setInput('');
-    addMessage({ role: 'user', content: text });
+    setThinkingSteps([]);
+    setShowThinking(true);
+
+    // Build user message content
+    let userMessageContent: string;
+    if (hasImage && text) {
+      userMessageContent = text;
+    } else if (hasImage) {
+      userMessageContent = `Searching by image: ${imageToSend?.file.name}`;
+    } else {
+      userMessageContent = text;
+    }
+
+    // Add user message to context FIRST (saves to localStorage + backend if logged in)
+    addMessage({ 
+      role: 'user', 
+      content: userMessageContent, 
+      previewUrl: hasImage ? imageToSend?.previewUrl : undefined 
+    });
+
     setLoading(true);
+
     try {
-      const res = await fashionApi.chat(text, [], chatSessionId, authSessionId);
-      addMessage({ role: 'assistant', content: res.reply, products: res.products });
+      // Use streaming to show thinking process
+      const imageId = hasImage ? await chatApi.uploadImage(imageToSend!.file).then(r => r.image_id) : undefined;
+      
+      const stream = chatApi.chatStream(
+        text || (hasImage ? 'Find items similar to this image' : ''),
+        imageId,
+        chatSessionId,
+        authSessionId,
+        { gender: gender || undefined, category: category || undefined, query: query || undefined },
+      );
 
-      // If the AI returned products, mirror its filters into the sidebar
-      if (res.products && res.products.length > 0) {
-        const newGender   = res.filter?.gender   || dominant(res.products.map(p => p.gender));
-        const newCategory = res.filter?.category || dominant(res.products.map(p => p.category));
-        const newQuery    = res.filter?.query    || '';
+      let finalReply = '';
+      let products: chatApi.Product[] = [];
+      let sections: chatApi.ProductSection[] = [];
+      let shopFilter: chatApi.ShopFilter | undefined;
 
-        if (newGender)   setGender(newGender);
-        if (newCategory) setCategory(newCategory);
-        if (newQuery)  { setQuery(newQuery); setInputValue(newQuery); }
-        navigate('/shop');
+      for await (const event of stream) {
+        if (event.type === 'thinking_start' || event.type === 'thinking') {
+          if (event.content) {
+            setThinkingSteps(prev => [...prev, { kind: 'thinking', content: event.content! }]);
+          }
+        } else if (event.type === 'tool_call') {
+          if (event.content) {
+            setThinkingSteps(prev => [...prev, { kind: 'tool_call', content: event.content!, tool: event.tool }]);
+          }
+        } else if (event.type === 'tool_result') {
+          if (event.content) {
+            setThinkingSteps(prev => [...prev, { kind: 'tool_result', content: event.content!, tool: event.tool }]);
+          }
+        } else if (event.type === 'found_products') {
+          if (event.content) {
+            setThinkingSteps(prev => [...prev, { kind: 'tool_result', content: event.content! }]);
+          }
+        } else if (event.type === 'final') {
+          finalReply = event.reply || '';
+          products = event.products || [];
+          sections = event.sections || [];
+          shopFilter = event.filter;
+
+          // Agent may still apply gender/category filter to help the shop page
+          // but never writes into the search bar — that belongs to the human.
+          if (shopFilter) {
+            if (shopFilter.gender) setGender(shopFilter.gender);
+            if (shopFilter.category) setCategory(shopFilter.category);
+          }
+        }
       }
-    } catch {
+
+      if (finalReply) {
+        addMessage({ role: 'assistant', content: finalReply, products, sections });
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
       addMessage({
         role: 'assistant',
         content: 'Could not reach the server. Make sure the backend is running.',
       });
     } finally {
       setLoading(false);
+      setTimeout(() => setShowThinking(false), 2000);
     }
   }
 
-  // ── Image send ───────────────────────────────────────────────────────────
+  // ── Handle image file selection (preview only, don't send) ───────────────
 
-  async function handleImageFile(file: File) {
+  function handleImageFile(file: File) {
     if (loading) return;
     const previewUrl = URL.createObjectURL(file);
-    addMessage({ role: 'user', content: `Searching by image: ${file.name}`, previewUrl });
-    setLoading(true);
-    try {
-      const res = await fashionApi.searchImage(file);
-      const reply =
-        res.total > 0
-          ? `Found ${res.total} visually similar items!`
-          : "Couldn't find similar items. Try a clearer photo or describe what you're looking for.";
-      addMessage({ role: 'assistant', content: reply, products: res.results });
-    } catch {
-      addMessage({ role: 'assistant', content: 'Image search failed. Please try again.' });
-    } finally {
-      setLoading(false);
+    setPendingImage({ file, previewUrl });
+  }
+
+  // ── Remove pending image ─────────────────────────────────────────────────
+
+  function removePendingImage() {
+    if (pendingImage) {
+      URL.revokeObjectURL(pendingImage.previewUrl);
+      setPendingImage(null);
     }
   }
 
@@ -137,13 +204,69 @@ export default function ChatWidget() {
                     ? <ReactMarkdown>{msg.content}</ReactMarkdown>
                     : msg.content}
                 </div>
-                {msg.products && msg.products.length > 0 && (
+                {/* Sectioned product results */}
+                {msg.sections && msg.sections.length > 0 ? (
+                  <div className="chat-sections">
+                    {msg.sections.map((section) => {
+                      const isOpen = expandedSections.has(`${msg.id}-${section.id}`);
+                      const toggle = () => setExpandedSections(prev => {
+                        const next = new Set(prev);
+                        const key = `${msg.id}-${section.id}`;
+                        next.has(key) ? next.delete(key) : next.add(key);
+                        return next;
+                      });
+                      return (
+                        <div key={section.id} className="chat-section">
+                          <button className="chat-section-header" onClick={toggle}>
+                            <span className="chat-section-label">{section.label}</span>
+                            <span className="chat-section-meta">
+                              {section.products.length > 0
+                                ? `${section.products.length} pieces`
+                                : 'not in archive'}
+                            </span>
+                            {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          </button>
+                          {isOpen && (
+                            <div className="chat-section-body">
+                              {section.products.length === 0 ? (
+                                <p className="chat-section-empty">
+                                  This category is not currently represented in our archive.
+                                </p>
+                              ) : (
+                                <div className="chat-products">
+                                  {section.products.map((p) => (
+                                    <Link key={p.product_id} to={`/product/${p.product_id}`} className="chat-product-card">
+                                      <div className="chat-product-img">
+                                        <img
+                                          src={chatApi.productImageUrl(p.image_url)}
+                                          alt={p.product_name}
+                                          loading="lazy"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="chat-product-info">
+                                        <p className="chat-product-name">{p.product_name}</p>
+                                        <p className="chat-product-price">${p.price.toFixed(2)}</p>
+                                      </div>
+                                    </Link>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : msg.products && msg.products.length > 0 ? (
                   <div className="chat-products">
-                    {msg.products.slice(0, 6).map((p) => (
+                    {msg.products.map((p) => (
                       <Link key={p.product_id} to={`/product/${p.product_id}`} className="chat-product-card">
                         <div className="chat-product-img">
                           <img
-                            src={fashionApi.productImageUrl(p.image_url)}
+                            src={chatApi.productImageUrl(p.image_url)}
                             alt={p.product_name}
                             loading="lazy"
                             onError={(e) => {
@@ -154,7 +277,7 @@ export default function ChatWidget() {
                         <div className="chat-product-info">
                           <p className="chat-product-name">{p.product_name}</p>
                           <p className="chat-product-price">${p.price.toFixed(2)}</p>
-                          {p.similarity > 0 && p.similarity < 1 && (
+                          {p.similarity !== undefined && p.similarity > 0 && p.similarity < 1 && (
                             <p className="chat-product-match">
                               {Math.round(p.similarity * 100)}% match
                             </p>
@@ -163,15 +286,36 @@ export default function ChatWidget() {
                       </Link>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
 
-            {loading && (
+            {/* Live thought process — visible for the full duration of loading */}
+            {(loading || showThinking) && (
               <div className="chat-message assistant">
-                <div className="chat-bubble chat-loading">
-                  <Loader2 size={14} className="spin" />
-                  <span>Searching…</span>
+                <div className="chat-thinking-bubble">
+                  <div className="chat-thinking-header">
+                    {loading
+                      ? <Loader2 size={12} className="spin" />
+                      : <Sparkles size={12} />}
+                    <span>{loading ? 'Thinking…' : 'Done'}</span>
+                  </div>
+                  <div className="chat-thinking-steps">
+                    {thinkingSteps.length === 0 && loading && (
+                      <div className="chat-thinking-step chat-thinking-step--thinking">
+                        <span className="chat-thinking-arrow">→</span>
+                        <span className="chat-thinking-pulse">Reading your request…</span>
+                      </div>
+                    )}
+                    {thinkingSteps.map((step, i) => (
+                      <div key={i} className={`chat-thinking-step chat-thinking-step--${step.kind} chat-thinking-step--in`}>
+                        {step.kind === 'tool_call'   && <Wrench size={10} className="chat-thinking-icon" />}
+                        {step.kind === 'tool_result' && <span className="chat-thinking-check">✓</span>}
+                        {step.kind === 'thinking'    && <span className="chat-thinking-arrow">→</span>}
+                        <span>{step.content}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -179,12 +323,27 @@ export default function ChatWidget() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Pending image preview */}
+          {pendingImage && (
+            <div className="chat-pending-image">
+              <img src={pendingImage.previewUrl} alt="Pending upload" />
+              <button
+                className="chat-remove-image"
+                onClick={removePendingImage}
+                disabled={loading}
+                aria-label="Remove image"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
+
           {/* Input row */}
           <div className="chat-input-row">
             <button
               className="chat-img-btn"
               onClick={() => fileRef.current?.click()}
-              disabled={loading}
+              disabled={loading || !!pendingImage}
               title="Upload image for visual search"
             >
               <ImagePlus size={17} />
@@ -204,7 +363,7 @@ export default function ChatWidget() {
               className="chat-text-input"
               type="text"
               value={input}
-              placeholder="Describe what you're looking for…"
+              placeholder={pendingImage ? "Add a description (optional)…" : "Describe what you're looking for…"}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               disabled={loading}
@@ -212,7 +371,7 @@ export default function ChatWidget() {
             <button
               className="chat-send-btn"
               onClick={handleSend}
-              disabled={!input.trim() || loading}
+              disabled={loading || (!input.trim() && !pendingImage)}
               aria-label="Send"
             >
               <Send size={15} />

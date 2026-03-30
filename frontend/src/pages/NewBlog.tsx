@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import { useAuth } from '../lib/auth-context'
+import { useBlog } from '../lib/blog-context'
+import * as blogApi from '../services/blogApi'
 import '../styles/newblog.css'
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860'
 
 const CATEGORIES = [
   'Fashion Tips', 'Care Guide', 'Product Guide', 'Innovation',
@@ -14,8 +15,8 @@ const today = new Date().toISOString().slice(0, 10)
 
 export default function NewBlog() {
   const navigate = useNavigate()
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const { user, session, isLoading } = useAuth()
+  const { refreshBlog } = useBlog()
 
   const [form, setForm] = useState({
     title: '',
@@ -29,21 +30,16 @@ export default function NewBlog() {
     image: '/img/photo-6311392.jpg',
     body: '',
   })
-  const [adminKey, setAdminKey] = useState('')
   const [preview, setPreview]   = useState(false)
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
 
-  // Check if user is logged in on mount
+  // Set default author if user is logged in
   useEffect(() => {
-    const sessionId = localStorage.getItem('sd_session_id')
-    if (sessionId) {
-      fetch(`${API_BASE}/auth/me`, { headers: { 'session_id': sessionId } })
-        .then(r => { if (r.ok) setIsAuthenticated(true) })
-        .catch(() => {})
+    if (user && !form.author) {
+      setForm(f => ({ ...f, author: user.name || user.email.split('@')[0] }))
     }
-    setIsLoading(false)
-  }, [])
+  }, [user])
 
   const set = (field: string, value: string | boolean) =>
     setForm(f => ({ ...f, [field]: value }))
@@ -51,42 +47,25 @@ export default function NewBlog() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    
+    if (!session) {
+      setError('You must be logged in to create a blog post.')
+      return
+    }
+
     if (!form.title.trim() || !form.body.trim()) {
       setError('Title and body are required.')
       return
     }
-    
-    // Get session_id for authenticated users
-    const sessionId = localStorage.getItem('sd_session_id')
-    if (!sessionId && !adminKey.trim()) {
-      setError('You must be logged in or provide an admin key.')
-      return
-    }
-    
+
     setSaving(true)
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (sessionId) {
-        headers['session_id'] = sessionId
-      } else {
-        headers['X-Admin-Key'] = adminKey
-      }
+      const data = await blogApi.createJournalPost({
+        ...form,
+        tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
+      }, session.session_id)
       
-      const res = await fetch(`${API_BASE}/journal`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ...form,
-          tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-        }),
-      })
-      
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Failed to save post' }))
-        throw new Error(err.detail || 'Failed to save post')
-      }
-      
-      const data = await res.json()
+      await refreshBlog()
       navigate(`/blog/${data.slug}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save post.')
@@ -105,20 +84,20 @@ export default function NewBlog() {
     )
   }
 
-  if (!isAuthenticated && !adminKey) {
+  if (!user) {
     return (
       <div className="newblog">
         <div className="container">
-          <div className="auth-container">
+          <div className="auth-container" style={{ textAlign: 'center', padding: '100px 20px' }}>
             <div className="auth-header">
               <h1 className="auth-title">Sign In Required</h1>
-              <p className="auth-description">Only logged-in users can create blog posts.</p>
+              <p className="auth-description">Only logged-in users can create journal entries.</p>
             </div>
-            <div className="auth-actions">
-              <button onClick={() => navigate('/sign-in')} className="auth-button-primary">
+            <div className="auth-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button onClick={() => navigate('/sign-in')} className="btn btn-primary">
                 Sign In
               </button>
-              <button onClick={() => navigate('/sign-up')} className="auth-button-secondary">
+              <button onClick={() => navigate('/sign-up')} className="btn btn-secondary">
                 Create Account
               </button>
             </div>
@@ -132,13 +111,15 @@ export default function NewBlog() {
     <div className="newblog">
       <div className="newblog-header">
         <h1>New Journal Entry</h1>
-        <button
-          className={`newblog-preview-btn ${preview ? 'active' : ''}`}
-          type="button"
-          onClick={() => setPreview(p => !p)}
-        >
-          {preview ? 'Edit' : 'Preview'}
-        </button>
+        <div className="newblog-header-actions">
+          <button
+            className={`newblog-preview-btn ${preview ? 'active' : ''}`}
+            type="button"
+            onClick={() => setPreview(p => !p)}
+          >
+            {preview ? 'Edit' : 'Preview'}
+          </button>
+        </div>
       </div>
 
       {preview ? (
@@ -256,17 +237,6 @@ export default function NewBlog() {
               onChange={e => set('body', e.target.value)}
               placeholder="Write your article in Markdown…"
               rows={20}
-            />
-          </div>
-
-          <div className="newblog-row">
-            <label className="newblog-label">Admin key *</label>
-            <input
-              className="newblog-input newblog-key"
-              type="password"
-              value={adminKey}
-              onChange={e => setAdminKey(e.target.value)}
-              placeholder="Enter ADMIN_KEY from backend .env"
             />
           </div>
 

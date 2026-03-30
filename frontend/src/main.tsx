@@ -12,16 +12,19 @@ if (!crypto.randomUUID) {
   }
 }
 
+import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate } from 'react-router-dom'
 import './index.css'
-import { ShopProvider } from './lib/shop-context'
+import { ShopProvider, useShop } from './lib/shop-context'
 import { AuthProvider } from './lib/auth-context'
-import { ConvoProvider } from './lib/convo-context'
+import { ConvoProvider, useConvo } from './lib/convo-context'
 import { CartProvider } from './lib/cart-context'
+import { BlogProvider } from './lib/blog-context'
 import { MonitorProvider } from './lib/monitor-context'
+import { SocketProvider, useSocket } from './lib/socket-context'
 import Header from './components/Header'
-import Footer from './components/Footer'
+
 import ShopSidebar from './components/ShopSidebar'
 import ScrollToTop from './components/ScrollToTop'
 import Product from './pages/Product'
@@ -39,6 +42,71 @@ import Account from './pages/Account'
 import Cart from './pages/Cart'
 import ChatWidget from './components/ChatWidget'
 import './styles/shop.css'
+
+/**
+ * SocketBridge — lives inside ConvoProvider so it can read chatSessionId,
+ * then wraps children with SocketProvider scoped to that session.
+ */
+function SocketBridge({ children }: { children: React.ReactNode }) {
+  const { chatSessionId } = useConvo();
+  return <SocketProvider sessionId={chatSessionId}>{children}</SocketProvider>;
+}
+
+/**
+ * UiActionExecutor — consumes ui_action events from the Socket.IO context
+ * and executes them against the React router / shop state.
+ */
+function UiActionExecutor() {
+  const { lastUiAction, clearUiAction } = useSocket();
+  const { setGender, setCategory, setQuery, setInputValue } = useShop();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!lastUiAction) return;
+
+    const { action, payload = {} } = lastUiAction;
+    console.info('[UiActionExecutor] executing:', action, payload);
+
+    switch (action) {
+      case 'navigate':
+        if (typeof payload.path === 'string') navigate(payload.path);
+        break;
+      case 'apply_filter':
+      case 'select_sidebar': {
+        // Agent may only set the sidebar gender/category pills.
+        // The search bar belongs to the human.
+        const f = payload as { gender?: string; category?: string };
+        if (f.gender) setGender(f.gender);
+        if (f.category) setCategory(f.category);
+        break;
+      }
+      case 'open_product':
+        if (typeof payload.product_id === 'string')
+          navigate(`/product/${payload.product_id}`);
+        break;
+      case 'scroll_to_shop':
+        navigate('/shop');
+        break;
+      case 'set_search_hint':
+        // Agent writes into the search bar AND triggers the keyword search.
+        if (typeof payload.query === 'string') {
+          setInputValue(payload.query);
+          setQuery(payload.query);   // fires the keyword search on the shop page
+        }
+        break;
+      case 'clear_filters':
+        setGender('');
+        setCategory('');
+        setQuery('');
+        setInputValue('');
+        break;
+    }
+
+    clearUiAction();
+  }, [lastUiAction]);
+
+  return null;
+}
 
 // Layout shared by /shop and /product/:id — sidebar rendered once here
 function ShopLayout() {
@@ -58,10 +126,13 @@ function App() {
   return (
     <AuthProvider>
       <ConvoProvider>
+      <SocketBridge>
       <CartProvider>
       <ShopProvider>
+      <BlogProvider>
         <Router>
           <MonitorProvider>
+          <UiActionExecutor />
           <ScrollToTop />
           <div className="app">
             <Header />
@@ -87,13 +158,14 @@ function App() {
                 <Route path="/blog/:id" element={<BlogPost />} />
               </Routes>
             </main>
-            <Footer />
             <ChatWidget />
           </div>
           </MonitorProvider>
         </Router>
+      </BlogProvider>
       </ShopProvider>
       </CartProvider>
+      </SocketBridge>
       </ConvoProvider>
     </AuthProvider>
   )
