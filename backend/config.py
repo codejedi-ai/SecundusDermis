@@ -26,6 +26,7 @@ IMAGES_DIR    = DATASET_ROOT / "selected_images"
 CHROMA_DIR    = DATA_DIR / "chroma_db"
 JOURNAL_DIR   = DATA_DIR / "journal"
 UPLOADS_DIR   = DATA_DIR / "uploads"
+PROMPTS_FILE  = DATA_DIR / "prompts.json"
 
 # ── AI Model Configuration ────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

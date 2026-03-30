@@ -14,7 +14,7 @@ if (!crypto.randomUUID) {
 
 import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import './index.css'
 import { ShopProvider, useShop } from './lib/shop-context'
 import { AuthProvider } from './lib/auth-context'
@@ -60,6 +60,7 @@ function UiActionExecutor() {
   const { lastUiAction, clearUiAction } = useSocket();
   const { setGender, setCategory, setQuery, setInputValue } = useShop();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!lastUiAction) return;
@@ -72,12 +73,13 @@ function UiActionExecutor() {
         if (typeof payload.path === 'string') navigate(payload.path);
         break;
       case 'apply_filter':
-      case 'select_sidebar': {
-        // Agent may only set the sidebar gender/category pills.
-        // The search bar belongs to the human.
+      case 'select_sidebar':
+      case 'select_category': {
+        // Agent sets sidebar tags; empty string clears (must use `in` — falsy values still apply).
         const f = payload as { gender?: string; category?: string };
-        if (f.gender) setGender(f.gender);
-        if (f.category) setCategory(f.category);
+        if ('gender' in f) setGender(f.gender ?? '');
+        if ('category' in f) setCategory(f.category ?? '');
+        if (location.pathname !== '/shop') navigate('/shop');
         break;
       }
       case 'open_product':
@@ -92,6 +94,7 @@ function UiActionExecutor() {
         if (typeof payload.query === 'string') {
           setInputValue(payload.query);
           setQuery(payload.query);   // fires the keyword search on the shop page
+          if (location.pathname !== '/shop') navigate('/shop');
         }
         break;
       case 'clear_filters':

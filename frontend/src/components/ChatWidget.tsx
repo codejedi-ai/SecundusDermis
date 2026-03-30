@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { ImagePlus, Loader2, MessageCircle, Send, X, Trash2, Sparkles, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import * as chatApi from '../services/chatApi';
@@ -40,6 +40,8 @@ export default function ChatWidget() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const { gender, category, query, setGender, setCategory } = useShop();
 
@@ -121,6 +123,14 @@ export default function ChatWidget() {
         } else if (event.type === 'found_products') {
           if (event.content) {
             setThinkingSteps(prev => [...prev, { kind: 'tool_result', content: event.content! }]);
+            // If individual products are sent mid-stream (via show_product tool), add them as a message
+            if (event.products && event.products.length > 0) {
+              addMessage({ 
+                role: 'assistant', 
+                content: event.content, 
+                products: event.products 
+              });
+            }
           }
         } else if (event.type === 'final') {
           finalReply = event.reply || '';
@@ -131,8 +141,14 @@ export default function ChatWidget() {
           // Agent may still apply gender/category filter to help the shop page
           // but never writes into the search bar — that belongs to the human.
           if (shopFilter) {
-            if (shopFilter.gender) setGender(shopFilter.gender);
-            if (shopFilter.category) setCategory(shopFilter.category);
+            if ('gender' in shopFilter) setGender(shopFilter.gender ?? '');
+            if ('category' in shopFilter) setCategory(shopFilter.category ?? '');
+            const hasSidebar =
+              !!(shopFilter.gender && String(shopFilter.gender).trim()) ||
+              !!(shopFilter.category && String(shopFilter.category).trim());
+            if (hasSidebar && location.pathname !== '/shop') {
+              navigate('/shop');
+            }
           }
         }
       }

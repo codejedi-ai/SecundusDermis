@@ -55,6 +55,7 @@ export interface ProductSection {
  *   navigate        — go to a route (payload: { path: string })
  *   apply_filter    — set shop gender/category via sidebar (payload: { gender?, category? })
  *   select_sidebar  — alias for apply_filter, semantically: agent picks sidebar pills
+ *   select_category — same as apply_filter (backend agent emit)
  *   set_search_hint — agent writes a directional hint into the search bar to show where it's heading (payload: { query: string })
  *   highlight       — highlight a product card (payload: { product_id: string })
  *   open_product    — navigate to a product page (payload: { product_id: string })
@@ -62,7 +63,7 @@ export interface ProductSection {
  *   clear_filters   — reset sidebar gender/category (no payload)
  */
 export interface UiAction {
-  action: 'navigate' | 'apply_filter' | 'select_sidebar' | 'set_search_hint' | 'highlight' | 'open_product' | 'scroll_to_shop' | 'clear_filters';
+  action: 'navigate' | 'apply_filter' | 'select_sidebar' | 'select_category' | 'set_search_hint' | 'highlight' | 'open_product' | 'scroll_to_shop' | 'clear_filters';
   payload?: Record<string, unknown>;
   description?: string;
 }
