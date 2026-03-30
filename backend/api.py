@@ -756,33 +756,24 @@ async def catalog_random(n: int = 12):
 
 # ── Journal endpoints ─────────────────────────────────────────────────────────
 
-def _parse_journal_post(path: Path) -> Optional[dict]:
-    """Parse a markdown file with YAML front-matter into a post dict."""
-    try:
-        text = path.read_text(encoding="utf-8")
-        if not text.startswith("---"):
-            return None
-        _, fm, body = text.split("---", 2)
-        import yaml
-        meta = yaml.safe_load(fm) or {}
-        meta["slug"] = path.stem
-        meta["body"] = body.strip()
-        meta.setdefault("tags", [])
-        meta.setdefault("featured", False)
-        meta.setdefault("image", "/image-blog.jpeg")
-        meta.setdefault("read_time", "3 min read")
-        return meta
-    except Exception:
-        return None
-
-
 def _load_journal() -> list[dict]:
+    """Load all .json files from JOURNAL_DIR. Returns list sorted by date desc."""
     posts = []
-    for p in sorted(JOURNAL_DIR.glob("*.md")):
-        post = _parse_journal_post(p)
-        if post:
-            posts.append(post)
-    return posts
+    for p in sorted(JOURNAL_DIR.glob("*.json")):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                post = json.load(f)
+                post.setdefault("slug", p.stem)
+                post.setdefault("tags", [])
+                post.setdefault("featured", False)
+                post.setdefault("image", "/image-blog.jpeg")
+                post.setdefault("read_time", "3 min read")
+                posts.append(post)
+        except Exception as e:
+            logger.error(f"Failed to load journal entry {p}: {e}")
+    
+    # Sort by date descending
+    return sorted(posts, key=lambda x: x.get("date", ""), reverse=True)
 
 
 @app.get("/journal")
@@ -805,38 +796,34 @@ async def journal_categories():
 
 @app.get("/journal/{slug}")
 async def journal_post(slug: str):
-    path = JOURNAL_DIR / f"{slug}.md"
+    path = JOURNAL_DIR / f"{slug}.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Post not found")
-    post = _parse_journal_post(path)
-    if not post:
-        raise HTTPException(status_code=404, detail="Could not parse post")
-    return post
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            post = json.load(f)
+            post.setdefault("slug", slug)
+            return post
+    except Exception as e:
+        logger.error(f"Failed to read journal JSON {path}: {e}")
+        raise HTTPException(status_code=500, detail="Could not read post")
 
 
 @app.post("/journal")
 async def create_journal_post(post: dict, session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id or not get_user_from_session(session_id):
         raise HTTPException(status_code=401, detail="Authentication required")
+    
     slug = re.sub(r"[^a-z0-9]+", "-", post.get("title", "untitled").lower()).strip("-")
-    path = JOURNAL_DIR / f"{slug}.md"
-    tags = "\n".join(f'  - "{t}"' for t in post.get("tags", []))
-    content = f"""---
-title: "{post.get('title', '')}"
-excerpt: "{post.get('excerpt', '')}"
-author: "{post.get('author', '')}"
-date: "{post.get('date', '')}"
-category: "{post.get('category', '')}"
-tags:
-{tags}
-featured: {str(post.get('featured', False)).lower()}
-image: "{post.get('image', '/image-blog.jpeg')}"
-read_time: "{post.get('read_time', '3 min read')}"
----
-
-{post.get('body', '')}
-"""
-    path.write_text(content, encoding="utf-8")
+    path = JOURNAL_DIR / f"{slug}.json"
+    
+    # AI-authored by default as requested
+    post.setdefault("author", "Secundus Dermis")
+    post.setdefault("slug", slug)
+    
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(post, f, indent=2)
+        
     return {"slug": slug, "message": "Post created"}
 
 

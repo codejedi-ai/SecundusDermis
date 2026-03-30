@@ -58,3 +58,6 @@ dist/
 *.md
 !README.md
 !notebook/*.md
+
+# Journal data (AI authored JSON)
+backend/journal/*.json
