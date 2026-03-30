@@ -14,17 +14,9 @@ from typing import Optional, List, Union, Any
 
 import chromadb
 from chromadb.config import Settings
+import config
 
 logger = logging.getLogger(__name__)
-
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-DATA_DIR = Path(os.getenv("DATA_DIR", "./data"))
-VECTOR_DB_PATH = DATA_DIR / "chroma_db"
-VECTOR_DB_PATH.mkdir(parents=True, exist_ok=True)
-
-# Gemini 2.0 Embedding dimension (default is 3072)
-EMBEDDING_DIM = 3072 
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -64,7 +56,7 @@ class VectorStore:
     Manages two collections: 'images' and 'journal'.
     """
 
-    def __init__(self, db_path: Path = VECTOR_DB_PATH):
+    def __init__(self, db_path: Path = config.CHROMA_DIR):
         self.db_path = db_path
         self.client = chromadb.PersistentClient(path=str(db_path))
         

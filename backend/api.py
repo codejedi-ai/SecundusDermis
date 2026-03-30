@@ -39,6 +39,7 @@ from conversations import get_messages, append_message, clear_messages as clear_
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
+import config
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -52,20 +53,6 @@ sio = socketio.AsyncServer(
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
-# Single source of truth for data location
-DATA_DIR = Path(os.getenv("DATA_DIR", "./data"))
-KAGGLE_DIR = DATA_DIR / "kaggle"
-IMAGES_DIR = KAGGLE_DIR / "selected_images"
-JOURNAL_DIR = DATA_DIR / "journal"
-LABELS_CSV = KAGGLE_DIR / "labels_front.csv"
-UPLOADS_DIR = DATA_DIR / "uploads"
-
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview-customtools")
-EMBED_MODEL = "gemini-embedding-2-preview"
-THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
 
 HIST_BINS = 32
 
@@ -84,7 +71,7 @@ def index_journal():
         try:
             # Check if state.gemini is initialized (it is in lifespan)
             res = state.gemini.models.embed_content(
-                model=EMBED_MODEL,
+                model=config.EMBED_MODEL,
                 contents=text_to_embed,
                 config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
@@ -210,18 +197,18 @@ def histogram_similarity(a: np.ndarray, b: np.ndarray) -> float:
 # ── Catalog loader ────────────────────────────────────────────────────────────
 
 def load_catalog() -> list[dict]:
-    logger.info(f"Loading catalog from: {LABELS_CSV.absolute()}")
-    if not LABELS_CSV.exists():
-        logger.warning(f"Labels CSV not found at: {LABELS_CSV.absolute()}")
+    logger.info(f"Loading catalog from: {config.LABELS_CSV.absolute()}")
+    if not config.LABELS_CSV.exists():
+        logger.warning(f"Labels CSV not found at: {config.LABELS_CSV.absolute()}")
         return []
     
     rows = {}
-    with LABELS_CSV.open(newline="", encoding="utf-8") as fh:
+    with config.LABELS_CSV.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             iid = row.get("image_id", "").strip()
             if iid: rows[iid] = row
             
-    images_path = Path(IMAGES_DIR)
+    images_path = Path(config.IMAGES_DIR)
     logger.info(f"Scanning images in: {images_path.absolute()}")
     
     catalog = []
@@ -251,10 +238,10 @@ state = _State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set")
+    if not config.GEMINI_API_KEY:
+        raise RuntimeError("config.GEMINI_API_KEY is not set")
     logger.info("Initialising Gemini client …")
-    state.gemini = genai.Client(api_key=GEMINI_API_KEY)
+    state.gemini = genai.Client(api_key=config.GEMINI_API_KEY)
     logger.info("Checking dataset …")
     download_and_extract()
     logger.info("Loading catalog …")
@@ -267,10 +254,15 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Shutting down.")
 
+# Ensure static directories exist so mounting doesn't fail
+config.init_directories()
+
 app = FastAPI(title="SecundusDermis", version="5.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-if Path(IMAGES_DIR).exists():
-    app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="product_images")
+
+# Mount static files unconditionally
+app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
+app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -332,11 +324,11 @@ Patron history:
 {history_text}
 """
     try:
-        response = state.gemini.models.generate_content(model=MODEL, contents=prompt)
+        response = state.gemini.models.generate_content(model=config.MODEL, contents=prompt)
         data = json.loads(re.search(r"\{.*\}", response.text, re.DOTALL).group())
         
         slug = f"journey-{int(time.time())}-{hashlib.md5(email.encode()).hexdigest()[:4]}"
-        path = JOURNAL_DIR / f"{slug}.json"
+        path = config.JOURNAL_DIR / f"{slug}.json"
         
         journal_entry = {
             "title": data.get("title", "A New Patron Discovery"),
@@ -360,7 +352,7 @@ Patron history:
             vs = get_vector_store()
             text_to_embed = f"{journal_entry['title']}\n{journal_entry['excerpt']}\n{journal_entry['body'][:1000]}"
             res = state.gemini.models.embed_content(
-                model=EMBED_MODEL,
+                model=config.EMBED_MODEL,
                 contents=text_to_embed,
                 config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
@@ -484,12 +476,12 @@ Focus on finding actual products from the catalog."""
     parts.append(genai_types.Part(text=prompt))
 
     config = genai_types.GenerateContentConfig(
-        thinking_config=genai_types.ThinkingConfig(thinking_level=THINKING_LEVEL),
+        thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
         temperature=1.0,
     )
 
     try:
-        response = state.gemini.models.generate_content(model=MODEL, contents=parts, config=config)
+        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=config)
         reply = response.text or ""
         logger.info(f"[GEMINI] Reply: {reply[:150]}...")
 
@@ -556,7 +548,7 @@ async def gemini_chat_stream(
             embed_contents.append(message)
 
         res = state.gemini.models.embed_content(
-            model=EMBED_MODEL,
+            model=config.EMBED_MODEL,
             contents=embed_contents,
             config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
         )
@@ -637,12 +629,12 @@ async def gemini_chat_stream(
     parts.append(genai_types.Part(text=full_prompt))
 
     config = genai_types.GenerateContentConfig(
-        thinking_config=genai_types.ThinkingConfig(thinking_level=THINKING_LEVEL),
+        thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
         temperature=1.0,
     )
 
     try:
-        response = state.gemini.models.generate_content(model=MODEL, contents=parts, config=config)
+        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=config)
         raw_text = response.text or ""
         logger.info(f"[GEMINI STREAM] Raw: {raw_text[:150]}...")
 
@@ -819,7 +811,7 @@ async def chat(request: ChatRequest):
     mime_type = "image/jpeg"
     if request.image_id:
         for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = UPLOADS_DIR / f"{request.image_id}.{ext}"
+            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
             if candidate.exists():
                 image_bytes = candidate.read_bytes()
                 mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
@@ -834,7 +826,7 @@ async def chat_stream(request: ChatRequest):
     mime_type = "image/jpeg"
     if request.image_id:
         for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = UPLOADS_DIR / f"{request.image_id}.{ext}"
+            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
             if candidate.exists():
                 image_bytes = candidate.read_bytes()
                 mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
@@ -856,7 +848,7 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
     
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     
     content = await file.read()
     hash_part = hashlib.md5(content).hexdigest()[:8]
@@ -864,7 +856,7 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
     image_id = f"img_{timestamp}_{hash_part}"
     
     ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
-    file_path = UPLOADS_DIR / f"{image_id}.{ext}"
+    file_path = config.UPLOADS_DIR / f"{image_id}.{ext}"
     file_path.write_bytes(content)
     
     logger.info(f"Uploaded image: {image_id} -> {file_path}")
@@ -945,9 +937,9 @@ async def catalog_random(n: int = 12):
 # ── Journal endpoints ─────────────────────────────────────────────────────────
 
 def _load_journal() -> list[dict]:
-    """Load all .json files from JOURNAL_DIR. Returns list sorted by date desc."""
+    """Load all .json files from config.JOURNAL_DIR. Returns list sorted by date desc."""
     posts = []
-    for p in sorted(JOURNAL_DIR.glob("*.json")):
+    for p in sorted(config.JOURNAL_DIR.glob("*.json")):
         try:
             with open(p, "r", encoding="utf-8") as f:
                 post = json.load(f)
@@ -984,7 +976,7 @@ async def journal_categories():
 
 @app.get("/journal/{slug}")
 async def journal_post(slug: str):
-    path = JOURNAL_DIR / f"{slug}.json"
+    path = config.JOURNAL_DIR / f"{slug}.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Post not found")
     try:
@@ -1003,7 +995,7 @@ async def create_journal_post(post: dict, session_id: Optional[str] = Header(def
         raise HTTPException(status_code=401, detail="Authentication required")
     
     slug = re.sub(r"[^a-z0-9]+", "-", post.get("title", "untitled").lower()).strip("-")
-    path = JOURNAL_DIR / f"{slug}.json"
+    path = config.JOURNAL_DIR / f"{slug}.json"
     
     # AI-authored by default as requested
     post.setdefault("author", "Secundus Dermis")
