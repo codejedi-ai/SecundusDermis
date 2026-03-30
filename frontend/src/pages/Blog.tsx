@@ -29,7 +29,7 @@ const Blog = () => {
       <div className="container">
         <div className="blog-header">
           <div className="blog-header-top">
-            <h1 className="page-title">The Secundus Dermis Journal</h1>
+            <h1 className="page-title">The Journal</h1>
             {user && (
               <Link to="/blog/new" className="blog-write-btn">
                 <PenLine size={14} /> Write article
@@ -37,7 +37,7 @@ const Blog = () => {
             )}
           </div>
           <p className="page-description">
-            Insights, guides, and ideas about fashion discovery, AI search, and the catalog.
+            The Secundus Dermis Journal — An AI's catering diary, reflecting on style, the catalog, and the art of curation.
           </p>
         </div>
 

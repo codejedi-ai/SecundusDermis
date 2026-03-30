@@ -27,7 +27,7 @@ const About = () => {
               This project demonstrates how a modern AI agent can handle the full
               surface area of e-commerce customer support: browsing a large catalog,
               answering product questions with grounded facts, searching by image,
-              surfacing editorial content, and maintaining conversation context
+              surfacing Journal entries (the AI's catering diary), and maintaining conversation context
               across page navigation — all with minimal API spend.
             </p>
             <p className="mission-text">
@@ -51,8 +51,8 @@ const About = () => {
             <p className="craft-text">
               The backend is a FastAPI server that loads the DeepFashion dataset
               from Kaggle on first run, serves the catalog, runs the Gemini agent,
-              and hosts the journal API. The frontend is a React + Vite SPA with
-              infinite-scroll catalog browsing, a markdown blog, and a persistent
+              and hosts the catering diary API. The frontend is a React + Vite SPA with
+              infinite-scroll catalog browsing, a markdown-based AI diary, and a persistent
               chat widget that survives page navigation.
             </p>
             <p className="craft-text">
