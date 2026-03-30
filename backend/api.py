@@ -258,6 +258,63 @@ class ChatResponse(BaseModel):
     intent: str
     filter: Optional[ShopFilter] = None
 
+class ConvoMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: float
+
+async def dump_context_to_journal(session_id: str, email: str):
+    """Summarize the current session history and save to journal as a catering diary entry."""
+    messages = get_messages(session_id)
+    if not messages: return
+
+    logger.info(f"[DIARY DUMP] Summarizing journey for {email} ({len(messages)} messages)")
+    
+    # Use Gemini to summarize the style journey
+    history_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
+    prompt = f"""You are the Secundus Dermis AI fashion guardian. 
+You are writing a private "Catering Diary" entry about your interaction with patron {email}.
+Summarize their style journey, what they were looking for, what they liked, and how you catered to them.
+Write in an elegant, reflective, editorial voice.
+
+Format your response as a JSON object:
+{{
+  "title": "A short elegant title",
+  "excerpt": "A one-sentence summary",
+  "body": "The full reflection in markdown (3-4 paragraphs)"
+}}
+
+Patron history:
+{history_text}
+"""
+    try:
+        response = state.gemini.models.generate_content(model=MODEL, contents=prompt)
+        data = json.loads(re.search(r"\{.*\}", response.text, re.DOTALL).group())
+        
+        slug = f"journey-{int(time.time())}-{hashlib.md5(email.encode()).hexdigest()[:4]}"
+        path = JOURNAL_DIR / f"{slug}.json"
+        
+        journal_entry = {
+            "title": data.get("title", "A New Patron Discovery"),
+            "excerpt": data.get("excerpt", "Reflecting on a recent styling session."),
+            "author": "Secundus Dermis",
+            "date": time.strftime("%Y-%m-%d"),
+            "category": "Catering Diary",
+            "tags": ["Reflection", "Patron Journey", "Personalization"],
+            "featured": False,
+            "image": "/image-hero.jpeg",
+            "read_time": "3 min read",
+            "body": data.get("body", ""),
+            "slug": slug
+        }
+        
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(journal_entry, f, indent=2)
+            
+        logger.info(f"[DIARY DUMP] Saved journal entry: {slug}")
+    except Exception as e:
+        logger.error(f"[DIARY DUMP] Failed to summarize journey: {e}")
+
 class ImageUploadResponse(BaseModel):
     image_id: str
     message: str
@@ -825,6 +882,33 @@ async def create_journal_post(post: dict, session_id: Optional[str] = Header(def
         json.dump(post, f, indent=2)
         
     return {"slug": slug, "message": "Post created"}
+
+# ── Conversations (Session Sync) ──────────────────────────────────────────────
+
+@app.get("/conversations")
+async def get_conversations(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: return {"messages": []}
+    return {"messages": get_messages(session_id)}
+
+@app.post("/conversations")
+async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: raise HTTPException(status_code=401, detail="No session")
+    messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
+    
+    # TRIGGER: After 10 messages, dump a reflection to the journal
+    if len(messages) == 10:
+        user = get_user_from_session(session_id)
+        if user:
+            # Run in background to not block the request
+            asyncio.create_task(dump_context_to_journal(session_id, user.email))
+            
+    return {"messages": messages}
+
+@app.delete("/conversations")
+async def clear_conversation_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id: raise HTTPException(status_code=401, detail="No session")
+    clear_convo(session_id)
+    return {"status": "cleared"}
 
 
 @app.get("/catalog/product/{product_id}")
