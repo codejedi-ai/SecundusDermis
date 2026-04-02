@@ -40,6 +40,8 @@ import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import Account from './pages/Account'
 import Cart from './pages/Cart'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import ChatWidget from './components/ChatWidget'
 import './styles/shop.css'
 
@@ -145,6 +147,8 @@ function App() {
                 <Route path="/about" element={<About />} />
                 <Route path="/sign-in" element={<SignIn />} />
                 <Route path="/sign-up" element={<SignUp />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/account" element={<Account />} />
                 <Route path="/cart" element={<Cart />} />
 

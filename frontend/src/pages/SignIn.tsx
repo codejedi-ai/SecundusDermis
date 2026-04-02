@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 
 const SignIn = () => {
@@ -110,6 +110,9 @@ const SignIn = () => {
 
             <div className="auth-footer">
               <p>
+                <Link to="/forgot-password" className="auth-link">Forgot Password?</Link>
+              </p>
+              <p style={{ marginTop: '0.5rem' }}>
                 Don't have an account? <a href="/sign-up" className="auth-link">Sign up here</a>
               </p>
             </div>

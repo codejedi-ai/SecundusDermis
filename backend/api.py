@@ -31,8 +31,9 @@ from PIL import Image
 from pydantic import BaseModel
 
 from auth import (
-    UserCreate, UserLogin, UserResponse, LoginResponse,
+    UserCreate, UserLogin, UserResponse, LoginResponse, PasswordReset,
     create_user, authenticate_user, get_user_from_session, logout,
+    create_reset_token, verify_reset_token, reset_password,
 )
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from conversations import get_messages, append_message, clear_messages as clear_convo
@@ -1173,6 +1174,46 @@ async def get_current_user(session_id: Optional[str] = Header(default=None, alia
     user = get_user_from_session(session_id)
     if not user: raise HTTPException(status_code=401, detail="Invalid session")
     return user
+
+
+@app.post("/auth/request-password-reset")
+async def request_password_reset(email_data: dict):
+    """
+    Request a password reset token.
+    Email will be sent to the user with reset link (not implemented yet).
+    For now, returns the token directly for testing.
+    """
+    email = email_data.get("email", "")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+    
+    token = create_reset_token(email)
+    
+    if not token:
+        # Don't reveal if email exists
+        return {"status": "If the email exists, a reset link has been sent"}
+    
+    # TODO: Send email with reset link
+    # For now, return token for testing
+    return {
+        "status": "Reset token generated",
+        "token": token,
+        "reset_url": f"http://localhost:5173/reset-password?token={token}",
+        "message": "In production, an email would be sent with the reset link"
+    }
+
+
+@app.post("/auth/reset-password")
+async def reset_password_endpoint(reset_data: PasswordReset):
+    """
+    Reset password using a valid token.
+    """
+    success = reset_password(token=reset_data.token, new_password=reset_data.new_password)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    
+    return {"status": "Password reset successful"}
 
 @app.get("/cart", response_model=CartResponse)
 async def get_user_cart(session_id: Optional[str] = Header(default=None, alias="session-id")):
