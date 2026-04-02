@@ -109,9 +109,27 @@ const Header = () => {
               <ShoppingCart size={20} />
               {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </Link>
-            <Link to={user ? "/account" : "/sign-in"} className="nav-icon-link">
-              <User size={20} />
-            </Link>
+            {user ? (
+              <Link
+                to="/account"
+                className="nav-icon-link"
+                aria-label="Account"
+                title="Account"
+              >
+                <User size={20} />
+                <span className="nav-icon-text">Account</span>
+              </Link>
+            ) : (
+              <Link
+                to="/sign-in"
+                className="nav-icon-link"
+                aria-label="Sign In"
+                title="Sign In"
+              >
+                <User size={20} />
+                <span className="nav-icon-text">Sign In</span>
+              </Link>
+            )}
           </nav>
         </div>
 
