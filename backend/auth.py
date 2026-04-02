@@ -81,9 +81,9 @@ class LoginResponse(BaseModel):
 
 
 class PasswordReset(BaseModel):
-    email: str
     token: str
     new_password: str
+    email: Optional[str] = None  # Optional - token identifies the user
 
 
 # ── Auth functions ─────────────────────────────────────────────────────────────

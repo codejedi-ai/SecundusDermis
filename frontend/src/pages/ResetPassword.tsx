@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { API_BASE } from '../lib/api-base';
+
+const API_BASE = '/api';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -90,14 +91,14 @@ const ResetPassword = () => {
               </div>
 
               <div className="auth-form">
-                <div className="auth-success" style={{ padding: '1rem', background: '#d4edda', border: '1px solid #c3e6cb', borderRadius: '0.375rem', color: '#155724', marginBottom: '1rem' }}>
+                <div className="auth-success" style={{ marginBottom: '1.5rem' }}>
                   <strong>Password reset successful!</strong>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
+                  <p style={{ marginTop: '0.5rem' }}>
                     Redirecting to sign in...
                   </p>
                 </div>
 
-                <Link to="/sign-in" className="auth-button-primary" style={{ display: 'inline-block', textDecoration: 'none' }}>
+                <Link to="/sign-in" className="auth-button-primary">
                   Sign In Now
                 </Link>
               </div>
@@ -131,7 +132,7 @@ const ResetPassword = () => {
             <form className="auth-form" onSubmit={handleSubmit}>
               {error && <div className="auth-error">{error}</div>}
 
-              <div className="auth-input-group">
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label htmlFor="password">New Password</label>
                 <input
                   id="password"
@@ -142,10 +143,11 @@ const ResetPassword = () => {
                   required
                   disabled={isLoading || !token}
                   minLength={6}
+                  className="auth-input"
                 />
               </div>
 
-              <div className="auth-input-group">
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label htmlFor="confirmPassword">Confirm Password</label>
                 <input
                   id="confirmPassword"
@@ -155,11 +157,12 @@ const ResetPassword = () => {
                   placeholder="Confirm new password"
                   required
                   disabled={isLoading || !token}
+                  className="auth-input"
                 />
               </div>
 
               {!token && (
-                <div className="auth-error" style={{ marginBottom: '1rem' }}>
+                <div className="auth-error" style={{ marginBottom: '1.25rem' }}>
                   No reset token provided. Please use the link from your email.
                 </div>
               )}
@@ -168,11 +171,12 @@ const ResetPassword = () => {
                 type="submit"
                 className="auth-button-primary"
                 disabled={isLoading || !token}
+                style={{ width: '100%', marginTop: '0.5rem' }}
               >
                 {isLoading ? 'Resetting...' : 'Reset Password'}
               </button>
 
-              <div className="auth-footer">
+              <div className="auth-footer" style={{ marginTop: '1.5rem' }}>
                 <p>
                   Remember your password?{' '}
                   <Link to="/sign-in" className="auth-link">Sign In</Link>

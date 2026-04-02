@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api-base';
+
+const API_BASE = '/api';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -62,38 +63,39 @@ const ForgotPassword = () => {
 
             {submitted ? (
               <div className="auth-form">
-                <div className="auth-success" style={{ padding: '1rem', background: '#d4edda', border: '1px solid #c3e6cb', borderRadius: '0.375rem', color: '#155724', marginBottom: '1rem' }}>
+                <div className="auth-success">
                   <strong>Reset link sent!</strong>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
+                  <p>
                     Check your email for the password reset link.
                   </p>
                 </div>
 
                 {resetToken && (
-                  <div className="auth-info" style={{ padding: '1rem', background: '#fff3cd', border: '1px solid #ffeeba', borderRadius: '0.375rem', color: '#856404', marginBottom: '1rem' }}>
+                  <div className="auth-info">
                     <strong>Development Mode:</strong>
-                    <p style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
-                      Reset Token: <code style={{ background: '#fff', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>{resetToken}</code>
+                    <p style={{ marginBottom: '0.75rem' }}>
+                      Reset Token: <code>{resetToken}</code>
                     </p>
-                    <Link 
+                    <Link
                       to={`/reset-password?token=${resetToken}`}
-                      className="auth-button-primary"
-                      style={{ display: 'inline-block', marginTop: '0.5rem', textDecoration: 'none' }}
+                      className="auth-button-primary" style={{ width: '100%', marginTop: '0.5rem' }}
                     >
                       Go to Reset Password
                     </Link>
                   </div>
                 )}
 
-                <Link to="/sign-in" className="auth-link">
-                  ← Back to Sign In
-                </Link>
+                <div className="auth-footer" style={{ marginTop: '1.5rem' }}>
+                  <p>
+                    <Link to="/sign-in" className="auth-link">← Back to Sign In</Link>
+                  </p>
+                </div>
               </div>
             ) : (
               <form className="auth-form" onSubmit={handleSubmit}>
                 {error && <div className="auth-error">{error}</div>}
 
-                <div className="auth-input-group">
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                   <label htmlFor="email">Email Address</label>
                   <input
                     id="email"
@@ -103,12 +105,13 @@ const ForgotPassword = () => {
                     placeholder="you@example.com"
                     required
                     disabled={isLoading}
+                    className="auth-input"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="auth-button-primary"
+                  className="auth-button-primary" style={{ width: '100%', marginTop: '0.5rem' }}
                   disabled={isLoading}
                 >
                   {isLoading ? 'Sending...' : 'Send Reset Link'}
