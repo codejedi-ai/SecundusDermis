@@ -4,7 +4,7 @@ import { ArrowRight, Star } from 'lucide-react'
 import * as fashionApi from '../services/fashionApi'
 import Footer from '../components/Footer'
 
-const FALLBACK_IMG = '/img/photo-6311392.jpg'
+const FALLBACK_IMG = '/img/placeholder.svg'
 
 const features = [
   {
@@ -58,6 +58,9 @@ const Home = () => {
           <img
             src="/image-hero.jpeg"
             alt="Woman in elegant outfit"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = FALLBACK_IMG
+            }}
           />
         </div>
         <div className="hero-content">
@@ -127,6 +130,9 @@ const Home = () => {
             <img
               src="/image-understand.jpeg"
               alt="Fashion catalog preview"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = FALLBACK_IMG
+              }}
             />
           </div>
         </div>

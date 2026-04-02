@@ -16,6 +16,23 @@ The site is also designed as a target environment for external AI agents. Agents
 
 ---
 
+## Run modes: local vs Docker
+
+The project supports **two** configurations. The important variable is **`DATA_DIR`** (where Kaggle data, Chroma, journal, and uploads live).
+
+| | **Local mode** | **Docker mode** |
+|---|----------------|------------------|
+| **Purpose** | Development (`uv`, Vite, hot reload) | Production-style stack in containers |
+| **Config** | `backend/.env` (and optionally repo root `.env`; `backend/.env` wins on duplicate keys) | Environment variables in `docker-compose.yml` (production file is usually gitignored; copy from `docker-compose.yml.example`) |
+| **`DATA_DIR`** | **Absolute path on your machine**, e.g. `{repo}/backend/data` | **`/app/data`** inside the container, backed by a named volume |
+| **Kaggle zip** | `{DATA_DIR}/kaggle/deep-fashion-multimodal.zip` | Same path **inside** the container: `/app/data/kaggle/...` |
+| **Start backend** | `cd backend && uv run python api.py` | `docker compose up -d --build` (from repo root) |
+| **Start frontend** | `cd frontend && npm run dev` (proxies `/api` → `:8000`) | Use the `frontend` service in Compose (e.g. port **8080** → 80) |
+
+After changing `DATA_DIR` or Compose env, restart the backend process or containers.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -28,16 +45,22 @@ The site is also designed as a target environment for external AI agents. Agents
 | Gemini API key | [aistudio.google.com](https://aistudio.google.com) |
 | Kaggle API token | [kaggle.com/settings](https://www.kaggle.com/settings) |
 
-### Backend
+### Backend (**local mode**)
 
 ```bash
 cd backend
-cp .env.example .env          # fill in GEMINI_API_KEY, KAGGLE_API_TOKEN
+cp .env.example .env          # fill secrets; set DATA_DIR to an absolute path (see Run modes above)
 uv sync                       # install dependencies
 uv run python api.py          # starts on http://localhost:8000
 ```
 
-The DeepFashion Multimodal dataset (~650 MB, 12,278 items) downloads automatically on first run via the Kaggle API if `data/labels_front.csv` is absent. Interactive API docs at `http://localhost:8000/docs`.
+`api.py` loads env from the repo root `.env` first, then `backend/.env` (**overrides**). Prefer defining `DATA_DIR` in `backend/.env`.
+
+The DeepFashion Multimodal dataset (~650 MB) downloads on first run via the Kaggle API when the catalog is not ready under `{DATA_DIR}/kaggle/deep-fashion-multimodal/`. Interactive API docs at `http://localhost:8000/docs`.
+
+### Docker (**container mode**)
+
+From the repo root, use your production Compose file (see `docker-compose.yml.example`). Set `DATA_DIR=/app/data` and `AUTH_DATA_DIR=/app/data` in the backend service to match the mounted volume. Build and start: `docker compose up -d --build`.
 
 ### Frontend
 
@@ -49,17 +72,24 @@ npm run dev                   # starts on http://localhost:5173
 
 The Vite dev server proxies `/api/*` → `localhost:8000`.
 
-### Environment Variables
+### Environment variables
+
+Paths below **`DATA_DIR`** are derived in `backend/config.py` (do not set legacy `IMAGES_DIR` / `DATASET_ROOT` for the main API).
 
 ```env
-# backend/.env
-GEMINI_API_KEY=...                               # required — agent LLM + VLM image search
-KAGGLE_API_TOKEN=KGAT_...                        # required — dataset auto-download
+# backend/.env  (local)  —  use an ABSOLUTE DATA_DIR
+DATA_DIR=/absolute/path/to/SecundusDermis/backend/data
+AUTH_DATA_DIR=/absolute/path/to/SecundusDermis/backend/data   # optional; defaults near backend/ if unset
+
+# docker-compose backend.environment (containers)
+DATA_DIR=/app/data
+AUTH_DATA_DIR=/app/data
+
+GEMINI_API_KEY=...                               # required — LLM + VLM
+KAGGLE_API_TOKEN=KGAT_...                        # required — dataset download
 ADMIN_KEY=change-me                              # protects POST /journal
 AGENT_MODEL=gemini-3.1-pro-preview-customtools
 VLM_MODEL=gemini-3.1-pro-preview
-IMAGES_DIR=./data/selected_images
-JOURNAL_DIR=./journal
 ```
 
 ---

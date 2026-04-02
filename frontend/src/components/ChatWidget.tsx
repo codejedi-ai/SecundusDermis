@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth-context';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-const FALLBACK_IMAGE = '/img/photo-6311392.jpg';
+const FALLBACK_IMAGE = '/img/placeholder.svg';
 
 interface PendingImage {
   file: File;

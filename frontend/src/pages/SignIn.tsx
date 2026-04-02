@@ -113,7 +113,7 @@ const SignIn = () => {
                 <Link to="/forgot-password" className="auth-link">Forgot Password?</Link>
               </p>
               <p style={{ marginTop: '0.5rem' }}>
-                Don't have an account? <a href="/sign-up" className="auth-link">Sign up here</a>
+                Don&apos;t have an account? <Link to="/sign-up" className="auth-link">Sign up</Link>
               </p>
             </div>
           </div>

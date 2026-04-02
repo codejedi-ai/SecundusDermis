@@ -1,3 +1,9 @@
+# Docker run mode: DATA_DIR=/app/data inside the container.
+# Use the SAME host directory as backend/.env DATA_DIR so uv and Docker share one dataset:
+#   volumes:
+#     - /absolute/path/to/SecundusDermis/backend/data:/app/data
+# Or keep a named volume (data is separate from local uv).
+# Local-only: backend/.env — see README "Run modes".
 services:
   backend:
     build:
@@ -7,6 +13,8 @@ services:
       - GEMINI_MODEL=gemini-3.1-pro-preview-customtools
       - GEMINI_THINKING_LEVEL=low
       - KAGGLE_API_TOKEN=your_kaggle_api_token
+      - DATA_DIR=/app/data
+      - AUTH_DATA_DIR=/app/data
       - PORT=8000
     volumes:
       - backend-data:/app/data

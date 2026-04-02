@@ -38,6 +38,7 @@ import BlogPost from './pages/BlogPost'
 import NewBlog from './pages/NewBlog'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
+import VerifyEmail from './pages/VerifyEmail'
 import Account from './pages/Account'
 import Cart from './pages/Cart'
 import ForgotPassword from './pages/ForgotPassword'
@@ -149,6 +150,7 @@ function App() {
                 <Route path="/sign-up" element={<SignUp />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/account" element={<Account />} />
                 <Route path="/cart" element={<Cart />} />
 

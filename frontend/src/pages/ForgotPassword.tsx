@@ -23,10 +23,17 @@ const ForgotPassword = () => {
         credentials: 'include',
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.detail || 'Failed to request password reset');
+        const d = data.detail;
+        const msg =
+          typeof d === 'string'
+            ? d
+            : Array.isArray(d)
+              ? d.map((x: { msg?: string }) => x.msg || '').filter(Boolean).join(' ')
+              : 'Failed to request password reset';
+        throw new Error(msg || 'Failed to request password reset');
       }
 
       setSubmitted(true);

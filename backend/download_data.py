@@ -49,6 +49,20 @@ def data_ready() -> bool:
     return any(config.IMAGES_DIR.glob("*.jpg"))
 
 
+def _find_existing_zip() -> Path | None:
+    """Return path to an already-downloaded dataset zip if present."""
+    if config.DATASET_ZIP.exists():
+        return config.DATASET_ZIP
+    if not config.KAGGLE_DIR.is_dir():
+        return None
+    name_lower = config.DATASET_NAME.lower()
+    for z in sorted(config.KAGGLE_DIR.glob("*.zip")):
+        stem = z.stem.lower()
+        if name_lower in stem or "deep-fashion" in stem:
+            return z
+    return None
+
+
 def _extract_zip(zip_path: Path) -> None:
     """Extract zip into config.DATASET_ROOT."""
     log.info(f"Extracting {zip_path.name} to {config.DATASET_ROOT} …")
@@ -85,13 +99,15 @@ def download_and_extract() -> bool:
         log.info(f"Dataset already extracted at {config.DATASET_ROOT}. Skipping.")
         return True
 
+    zip_path = _find_existing_zip()
+
     # If zip is not there, we must download
-    if not config.DATASET_ZIP.exists():
-        log.info(f"Zip file not found at {config.DATASET_ZIP}. Attempting download...")
+    if zip_path is None:
+        log.info(f"Zip file not found at {config.DATASET_ZIP} (or similar under {config.KAGGLE_DIR}). Attempting download...")
         if not _inject_credentials():
             log.error("Kaggle credentials missing. Cannot download zip.")
             return False
-        
+
         try:
             import kaggle
             kaggle.api.dataset_download_files(
@@ -100,15 +116,17 @@ def download_and_extract() -> bool:
                 unzip=False,
                 quiet=False,
             )
-            # Kaggle downloads to slug name usually, ensure it matches our config.DATASET_ZIP path
-            # (In reality it might be named deep-fashion-multimodal.zip)
         except Exception as e:
             log.error(f"Download failed: {e}")
             return False
 
+        zip_path = _find_existing_zip()
+
     # Perform extraction
-    if config.DATASET_ZIP.exists():
-        _extract_zip(config.DATASET_ZIP)
+    if zip_path is not None:
+        if zip_path != config.DATASET_ZIP:
+            log.info(f"Using existing zip at {zip_path} (expected {config.DATASET_ZIP}).")
+        _extract_zip(zip_path)
         return data_ready()
 
     return False

@@ -149,8 +149,19 @@ const Header = () => {
           </div>
         )}
         <nav className="mobile-nav">
-          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact'], ['/cart', 'Cart'], [user ? '/account' : '/sign-in', user ? 'Account' : 'Sign In']] as [string, string][]).map(([to, label]) => (
-            <Link key={to} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
+          {([
+            ['/', 'Home'],
+            ['/about', 'About'],
+            ['/shop', 'Shop'],
+            ['/blog', 'Journal'],
+            ['/faq', 'FAQ'],
+            ['/contact', 'Contact'],
+            ['/cart', 'Cart'],
+            ...(user
+              ? [['/account', 'Account']] as [string, string][]
+              : [['/sign-in', 'Sign In']] as [string, string][]),
+          ] as [string, string][]).map(([to, label]) => (
+            <Link key={`${to}-${label}`} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
               {label}
             </Link>
           ))}

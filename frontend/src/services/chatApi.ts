@@ -4,8 +4,9 @@
  * Connects frontend to backend chat endpoints with streaming support
  */
 
-export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
-export const IMAGE_BASE = (import.meta.env.VITE_IMAGE_URL as string | undefined) ?? '';
+import { API_BASE } from '../lib/api-base';
+
+export { API_BASE, productImageUrl } from '../lib/api-base';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -243,11 +244,6 @@ export async function uploadImage(file: File): Promise<{ image_id: string; messa
 }
 
 // ── Utility Functions ──────────────────────────────────────────────────────
-
-/** Build the full URL for a product image returned by the API. */
-export function productImageUrl(image_url: string): string {
-  return `${IMAGE_BASE}${image_url}`;
-}
 
 /** Check if the backend is reachable. */
 export async function checkHealth(): Promise<boolean> {

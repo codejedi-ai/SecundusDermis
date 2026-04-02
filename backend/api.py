@@ -4,6 +4,14 @@ SecundusDermis — AI Fashion Agent API (Direct Gemini SDK)
 Uses Gemini SDK directly - NO ADK.
 """
 
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_backend_dir = Path(__file__).resolve().parent
+load_dotenv(_backend_dir.parent / ".env")
+load_dotenv(_backend_dir / ".env", override=True)
+
 import asyncio
 import csv
 import hashlib
@@ -15,11 +23,9 @@ import random
 import re
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Optional, AsyncGenerator
 
 import numpy as np
-from dotenv import load_dotenv
 import socketio
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,17 +38,23 @@ from pydantic import BaseModel
 
 from auth import (
     UserCreate, UserLogin, UserResponse, LoginResponse, PasswordReset,
-    create_user, authenticate_user, get_user_from_session, logout,
+    RegisterResponse, VerifyEmailRequest,
+    create_user, try_authenticate, get_user_from_session, logout,
     create_reset_token, verify_reset_token, reset_password,
+    verify_email_token, resend_verification_token,
 )
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from conversations import get_messages, append_message, clear_messages as clear_convo
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
-import config
 
-load_dotenv(Path(__file__).parent / ".env")
+import config
+from smtp_mail import (
+    gmail_smtp_configured,
+    try_send_password_reset_email,
+    try_send_verification_email,
+)
 
 # ── Socket.IO server ───────────────────────────────────────────────────────────
 
@@ -1146,16 +1158,73 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
 
 # ── Auth, Cart, etc (simplified) ──────────────────────────────────────────────
 
-@app.post("/auth/register", response_model=UserResponse, status_code=201)
+@app.post("/auth/register", response_model=RegisterResponse, status_code=201)
 async def register(user: UserCreate):
-    result = create_user(email=user.email, password=user.password, name=user.name)
-    if result is None: raise HTTPException(status_code=400, detail="Email already registered")
-    return result
+    out = create_user(email=user.email, password=user.password, name=user.name)
+    if out is None:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_resp, token = out
+    verify_url = f"{config.FRONTEND_PUBLIC_URL}/verify-email?token={token}"
+    base_message = "Check your email to verify your account before signing in."
+    if gmail_smtp_configured():
+        ok, err = try_send_verification_email(user_resp.email, verify_url)
+        if not ok:
+            logging.getLogger(__name__).error(
+                "Verification email failed for %s: %s", user_resp.email, err or "unknown"
+            )
+        return RegisterResponse(
+            email=user_resp.email,
+            name=user_resp.name,
+            message=base_message,
+        )
+    return RegisterResponse(
+        email=user_resp.email,
+        name=user_resp.name,
+        message=f"{base_message} (SMTP not configured — use verify_url for testing.)",
+        verification_token=token,
+        verify_url=verify_url,
+    )
+
+
+@app.post("/auth/verify-email")
+async def verify_email_endpoint(body: VerifyEmailRequest):
+    if not verify_email_token(body.token):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    return {"status": "Email verified. You can sign in now."}
+
+
+@app.post("/auth/resend-verification")
+async def resend_verification_ep(payload: dict):
+    """Send a new verification link if the account exists and is not yet verified."""
+    email = (payload.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+    token = resend_verification_token(email)
+    verify_url = f"{config.FRONTEND_PUBLIC_URL}/verify-email?token={token}"
+    if token and gmail_smtp_configured():
+        ok, err = try_send_verification_email(email.lower(), verify_url)
+        if not ok:
+            logging.getLogger(__name__).error(
+                "Resend verification email failed for %s: %s", email, err or "unknown"
+            )
+    # Do not reveal whether the email exists or is already verified
+    out: dict = {"status": "If the account exists and needs verification, a new link has been sent."}
+    if token and not gmail_smtp_configured():
+        out["verification_token"] = token
+        out["verify_url"] = verify_url
+    return out
+
 
 @app.post("/auth/login", response_model=LoginResponse)
 async def login(user: UserLogin):
-    session_id = authenticate_user(email=user.email, password=user.password)
-    if session_id is None: raise HTTPException(status_code=401, detail="Invalid credentials")
+    session_id, auth_err = try_authenticate(email=user.email, password=user.password)
+    if auth_err == "email_not_verified":
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email before signing in. Check your inbox for the verification link.",
+        )
+    if session_id is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     user_resp = get_user_from_session(session_id)
     response = JSONResponse(content={"session_id": session_id, "user": {"email": user_resp.email, "name": user_resp.name}})
     response.set_cookie(key="sd_session_id", value=session_id, max_age=30*24*60*60, httponly=True, samesite="lax", path="/")
@@ -1179,10 +1248,10 @@ async def get_current_user(session_id: Optional[str] = Header(default=None, alia
 @app.post("/auth/request-password-reset")
 async def request_password_reset(email_data: dict):
     """
-    Request a password reset token.
-    Email will be sent to the user with reset link (not implemented yet).
-    For now, returns the token directly for testing.
+    Request a password reset. If the address is registered, sends a reset link when SMTP is configured.
+    Returns 404 when no local user exists so the client can show a clear message.
     """
+    log = logging.getLogger(__name__)
     email = email_data.get("email", "")
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
@@ -1190,16 +1259,39 @@ async def request_password_reset(email_data: dict):
     token = create_reset_token(email)
     
     if not token:
-        # Don't reveal if email exists
+        log.info("Password reset: no local user for %s — returning 404 to client", email.strip())
+        raise HTTPException(
+            status_code=404,
+            detail="No account is registered with this email address. Sign up first or check the spelling.",
+        )
+
+    reset_url = f"{config.FRONTEND_PUBLIC_URL}/reset-password?token={token}"
+
+    if gmail_smtp_configured():
+        log.info(
+            "Password reset: sending SMTP mail to %s (smtp configured)",
+            email.strip().lower(),
+        )
+        ok, err = try_send_password_reset_email(email.strip().lower(), reset_url)
+        if ok:
+            log.info("Password reset: SMTP reported success for %s", email.strip().lower())
+        else:
+            log.error(
+                "Password reset email failed for %s: %s", email, err or "unknown"
+            )
+        # Same message whether send succeeded or not (avoid account enumeration)
         return {"status": "If the email exists, a reset link has been sent"}
-    
-    # TODO: Send email with reset link
-    # For now, return token for testing
+
+    log.warning(
+        "Password reset: GMAIL_USER/GMAIL_PASSWORD not set in process env — no email sent. "
+        "Restart the server after editing .env, or export vars before starting."
+    )
+    # Dev: SMTP not configured — keep a test-friendly payload (do not use in production)
     return {
-        "status": "Reset token generated",
+        "status": "Reset token generated (SMTP not configured)",
         "token": token,
-        "reset_url": f"http://localhost:5173/reset-password?token={token}",
-        "message": "In production, an email would be sent with the reset link"
+        "reset_url": reset_url,
+        "message": "Set GMAIL_USER and GMAIL_PASSWORD to send email instead of returning this payload",
     }
 
 

@@ -3,8 +3,7 @@
  * Session is stored in cookies for persistence across browser sessions.
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE } from './api-base';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -18,11 +17,19 @@ export interface Session {
   user: User;
 }
 
+export interface RegisterResult {
+  message: string;
+  email: string;
+  name?: string | null;
+  verificationToken?: string | null;
+  verifyUrl?: string | null;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signUp: (email: string, password: string, name?: string) => Promise<void>;
+  signUp: (email: string, password: string, name?: string) => Promise<RegisterResult>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -119,17 +126,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const signUp = async (email: string, password: string, name?: string) => {
+  const signUp = async (email: string, password: string, name?: string): Promise<RegisterResult> => {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
       credentials: 'include',
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
-      throw new Error(err.detail || 'Registration failed');
+      const d = data.detail;
+      const msg = typeof d === 'string' ? d : 'Registration failed';
+      throw new Error(msg);
     }
+    return {
+      message: data.message || 'Check your email to verify your account.',
+      email: data.email,
+      name: data.name ?? null,
+      verificationToken: data.verification_token ?? null,
+      verifyUrl: data.verify_url ?? null,
+    };
   };
 
   const signIn = async (email: string, password: string) => {
@@ -139,11 +155,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password }),
       credentials: 'include',
     });
+    const body = await res.json().catch(() => ({ detail: 'Invalid credentials' }));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Invalid credentials' }));
-      throw new Error(err.detail || 'Invalid email or password');
+      const d = body.detail;
+      const msg =
+        typeof d === 'string'
+          ? d
+          : Array.isArray(d)
+            ? d.map((x: { msg?: string }) => x.msg || '').filter(Boolean).join(' ')
+            : 'Invalid email or password';
+      throw new Error(msg || 'Invalid email or password');
     }
-    const data: Session = await res.json();
+    const data = body as Session;
     // Store session in both cookie and state for persistence
     setCookie(SESSION_COOKIE, data.session_id, 30); // 30 days
     setSession(data);

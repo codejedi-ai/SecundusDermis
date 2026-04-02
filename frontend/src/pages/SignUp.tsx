@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../lib/auth-context';
+import { Link } from 'react-router-dom';
+import { useAuth, type RegisterResult } from '../lib/auth-context';
 
 const SignUp = () => {
   const [email, setEmail] = useState('');
@@ -9,8 +9,10 @@ const SignUp = () => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signUp, signIn } = useAuth();
-  const navigate = useNavigate();
+  const [done, setDone] = useState<RegisterResult | null>(null);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendNote, setResendNote] = useState('');
+  const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,13 +31,39 @@ const SignUp = () => {
     setIsLoading(true);
 
     try {
-      await signUp(email, password, name || undefined);
-      await signIn(email, password);
-      navigate('/');
+      const result = await signUp(email, password, name || undefined);
+      setDone(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign up');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email.trim()) return;
+    setResendBusy(true);
+    setResendNote('');
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      setResendNote(data.status || 'Request sent.');
+      if (data.verify_url) {
+        setDone((d) =>
+          d
+            ? { ...d, verifyUrl: data.verify_url, verificationToken: data.verification_token }
+            : null
+        );
+      }
+    } catch {
+      setResendNote('Could not reach the server. Try again later.');
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -84,6 +112,44 @@ const SignUp = () => {
               </p>
             </div>
 
+            {done ? (
+              <div className="auth-form">
+                <div className="auth-success">
+                  <strong>Almost there</strong>
+                  <p style={{ marginTop: '0.5rem' }}>{done.message}</p>
+                  <p style={{ marginTop: '0.75rem', fontSize: '0.9rem' }}>
+                    We sent a link to <strong>{done.email}</strong>. After you verify, you can sign in.
+                  </p>
+                </div>
+                {done.verifyUrl && (
+                  <div className="auth-info" style={{ marginTop: '1rem' }}>
+                    <strong>Development</strong>
+                    <p style={{ marginTop: '0.35rem', fontSize: '0.875rem' }}>
+                      <a href={done.verifyUrl} className="auth-link">Open verification link</a>
+                    </p>
+                  </div>
+                )}
+                <div style={{ marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="auth-button-primary"
+                    disabled={resendBusy}
+                    onClick={handleResend}
+                    style={{ width: '100%' }}
+                  >
+                    {resendBusy ? 'Sending…' : 'Resend verification email'}
+                  </button>
+                  {resendNote && (
+                    <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>{resendNote}</p>
+                  )}
+                </div>
+                <div className="auth-footer" style={{ marginTop: '1.25rem' }}>
+                  <p>
+                    <Link to="/sign-in" className="auth-link">← Sign in</Link>
+                  </p>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="auth-form">
               {error && <div className="auth-error">{error}</div>}
 
@@ -151,12 +217,15 @@ const SignUp = () => {
                 {isLoading ? 'Creating account...' : 'Create Account'}
               </button>
             </form>
+            )}
 
+            {!done && (
             <div className="auth-footer">
               <p>
-                Already have an account? <a href="/sign-in" className="auth-link">Sign in here</a>
+                Already have an account? <Link to="/sign-in" className="auth-link">Sign in here</Link>
               </p>
             </div>
+            )}
           </div>
         </div>
       </div>

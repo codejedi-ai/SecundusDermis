@@ -2,13 +2,13 @@
  * fashionApi.ts
  * Typed client for the SecundusDermis FastAPI backend.
  *
- * Dev (Vite proxy):   all calls go to /api/* → localhost:8000/*
- * Prod:               set VITE_API_URL=https://your-backend.com
- *                     set VITE_IMAGE_URL=https://your-backend.com  (for /images/* assets)
+ * Dev: default `/api` + `/images` via Vite proxy. If you set VITE_API_URL to a full URL,
+ * see `lib/api-base.ts` — image URLs pick up the same host automatically.
  */
 
-export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
-export const IMAGE_BASE = (import.meta.env.VITE_IMAGE_URL as string | undefined) ?? '';
+import { API_BASE } from '../lib/api-base';
+
+export { API_BASE, productImageUrl } from '../lib/api-base';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -363,7 +363,3 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-/** Build the full URL for a product image returned by the API. */
-export function productImageUrl(image_url: string): string {
-  return `${IMAGE_BASE}${image_url}`;
-}

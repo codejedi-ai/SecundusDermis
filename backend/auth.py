@@ -9,13 +9,14 @@ import os
 import secrets
 import time
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, Optional, Tuple
 from pydantic import BaseModel
 
 _DATA_DIR = Path(os.getenv("AUTH_DATA_DIR", Path(__file__).parent / "data"))
 _USERS_FILE = _DATA_DIR / "auth_users.json"
 _SESSIONS_FILE = _DATA_DIR / "auth_sessions.json"
 _RESET_TOKENS_FILE = _DATA_DIR / "auth_reset_tokens.json"
+_VERIFY_TOKENS_FILE = _DATA_DIR / "auth_verify_tokens.json"
 
 
 # ── Persistence helpers ────────────────────────────────────────────────────────
@@ -45,6 +46,10 @@ def _reset_tokens() -> Dict[str, dict]:
     return _load(_RESET_TOKENS_FILE)
 
 
+def _verify_tokens() -> Dict[str, dict]:
+    return _load(_VERIFY_TOKENS_FILE)
+
+
 def _save_users(u: dict) -> None:
     _save(_USERS_FILE, u)
 
@@ -55,6 +60,10 @@ def _save_sessions(s: dict) -> None:
 
 def _save_reset_tokens(t: dict) -> None:
     _save(_RESET_TOKENS_FILE, t)
+
+
+def _save_verify_tokens(t: dict) -> None:
+    _save(_VERIFY_TOKENS_FILE, t)
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -86,14 +95,43 @@ class PasswordReset(BaseModel):
     email: Optional[str] = None  # Optional - token identifies the user
 
 
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class RegisterResponse(BaseModel):
+    email: str
+    name: Optional[str] = None
+    message: str
+    verification_token: Optional[str] = None
+    verify_url: Optional[str] = None
+
+
 # ── Auth functions ─────────────────────────────────────────────────────────────
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def create_user(email: str, password: str, name: Optional[str] = None) -> Optional[UserResponse]:
-    """Create a new user. Returns None if email already exists."""
+def _issue_email_verification_token(email: str) -> str:
+    """Replace any existing verification token for this email; return new token."""
+    email = email.lower().strip()
+    token = secrets.token_urlsafe(32)
+    vk = _verify_tokens()
+    vk = {t: v for t, v in vk.items() if v.get("email") != email}
+    vk[token] = {
+        "email": email,
+        "expires_at": time.time() + 48 * 3600,  # 48 hours
+    }
+    _save_verify_tokens(vk)
+    return token
+
+
+def create_user(email: str, password: str, name: Optional[str] = None) -> Optional[Tuple[UserResponse, str]]:
+    """
+    Create a new unverified user and issue an email verification token.
+    Returns (user, verification_token) or None if email already exists.
+    """
     email = email.lower().strip()
     users = _users()
     if email in users:
@@ -101,23 +139,79 @@ def create_user(email: str, password: str, name: Optional[str] = None) -> Option
     users[email] = {
         "password_hash": _hash_password(password),
         "name": name or email.split("@")[0],
+        "email_verified": False,
     }
     _save_users(users)
-    return UserResponse(email=email, name=users[email]["name"])
+    verify_token = _issue_email_verification_token(email)
+    return UserResponse(email=email, name=users[email]["name"]), verify_token
 
 
-def authenticate_user(email: str, password: str) -> Optional[str]:
-    """Authenticate user and return session_id. None if invalid."""
+def try_authenticate(
+    email: str, password: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Check password and create session if verified.
+    Returns (session_id, error): error is None on success,
+    \"invalid_credentials\", or \"email_not_verified\".
+    """
     email = email.lower().strip()
     users = _users()
     user = users.get(email)
     if not user or user["password_hash"] != _hash_password(password):
-        return None
+        return None, "invalid_credentials"
+    if not user.get("email_verified", True):
+        return None, "email_not_verified"
     session_id = os.urandom(16).hex()
     sessions = _sessions()
     sessions[session_id] = email
     _save_sessions(sessions)
-    return session_id
+    return session_id, None
+
+
+def authenticate_user(email: str, password: str) -> Optional[str]:
+    """Backward-compatible: session_id or None (loses unverified vs wrong-password)."""
+    sid, err = try_authenticate(email, password)
+    if err:
+        return None
+    return sid
+
+
+def verify_email_token(token: str) -> bool:
+    """Mark user's email verified if token is valid; returns False otherwise."""
+    vk = _verify_tokens()
+    token_data = vk.get(token)
+    if not token_data:
+        return False
+    if time.time() > token_data.get("expires_at", 0):
+        del vk[token]
+        _save_verify_tokens(vk)
+        return False
+    email = token_data.get("email")
+    if not email:
+        return False
+    users = _users()
+    if email not in users:
+        return False
+    users[email]["email_verified"] = True
+    _save_users(users)
+    del vk[token]
+    _save_verify_tokens(vk)
+    return True
+
+
+def resend_verification_token(email: str) -> Optional[str]:
+    """
+    If the account exists and is not verified, issue a new token and return it.
+    Returns None if user missing or already verified.
+    """
+    email = email.lower().strip()
+    users = _users()
+    user = users.get(email)
+    if not user:
+        return None
+    if user.get("email_verified", True):
+        return None
+    return _issue_email_verification_token(email)
 
 
 def get_user_from_session(session_id: str) -> Optional[UserResponse]:

@@ -9,9 +9,16 @@ import os
 from pathlib import Path
 
 # ── Base Data Directory ───────────────────────────────────────────────────────
-# The only environment variable needed for data paths
-DATA_DIR_STR = os.getenv("DATA_DIR", "./data")
-DATA_DIR = Path(DATA_DIR_STR).resolve()
+# Set DATA_DIR in backend/.env (local) or docker-compose environment (containers).
+# Recommended local: absolute path to backend/data, e.g. /path/to/SecundusDermis/backend/data
+# Docker: use /app/data and mount a volume there.
+# Kaggle zip path: DATA_DIR/kaggle/deep-fashion-multimodal.zip
+#
+# If DATA_DIR is relative, it is resolved against this package directory (backend/), not cwd.
+_BACKEND_ROOT = Path(__file__).resolve().parent
+_DATA_DIR_RAW = os.getenv("DATA_DIR", "./data").strip()
+_p = Path(_DATA_DIR_RAW)
+DATA_DIR = _p.resolve() if _p.is_absolute() else (_BACKEND_ROOT / _p).resolve()
 
 # ── Derived Subdirectories ────────────────────────────────────────────────────
 # Organized as requested: Kaggle, ChromaDB, Journal, and Uploads
@@ -34,6 +41,10 @@ MODEL          = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview-customtools")
 EMBED_MODEL    = "gemini-embedding-2-preview"
 EMBEDDING_DIM  = 3072
 THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
+
+# ── Email (Gmail SMTP, optional) ─────────────────────────────────────────────
+# Password reset links use this origin (no trailing slash).
+FRONTEND_PUBLIC_URL = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:5173").rstrip("/")
 
 # ── Initialization ────────────────────────────────────────────────────────────
 def init_directories():

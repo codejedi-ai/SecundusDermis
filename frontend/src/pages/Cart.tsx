@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ShoppingBag, Plus, Minus, Trash2, ArrowLeft } from 'lucide-react'
 import { useCart } from '../lib/cart-context'
 import { useAuth } from '../lib/auth-context'
+import { productImageUrl } from '../lib/api-base'
 
 const Cart = () => {
   const { cart, removeFromCart, updateQuantity } = useCart()
@@ -49,7 +50,7 @@ const Cart = () => {
               {cart.items.map((item) => (
                 <div key={item.product_id} className="cart-item">
                   <div className="cart-item-image">
-                    <img src={item.image_url} alt={item.product_name} />
+                    <img src={productImageUrl(item.image_url)} alt={item.product_name} />
                   </div>
                   <div className="cart-item-details">
                     <h3 className="cart-item-name">{item.product_name}</h3>

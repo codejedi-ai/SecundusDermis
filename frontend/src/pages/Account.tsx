@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import { Package, Heart, Settings, Lock, User, MapPin, Bell, CreditCard, FileText, Shield } from 'lucide-react';
+import { Package, Heart, Settings, MapPin, CreditCard } from 'lucide-react';
 import AccountSidebar from '../components/AccountSidebar';
-import './account.css';
+import '../styles/account.css';
 
 const Account = () => {
   const { user, signOut, isLoading } = useAuth();
