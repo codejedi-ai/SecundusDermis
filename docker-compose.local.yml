@@ -1,0 +1,76 @@
+# Local / CI — same stack as production, but reads repo-root `.env` (local testing only).
+# Does not use `docker-compose.yml` (production).
+#
+#   docker compose -f docker-compose.local.yml up --build
+#
+# Optional ngrok: docker compose -f docker-compose.local.yml --profile tunnel up --build
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      GEMINI_RPM: ${GEMINI_RPM}
+      DATASET_ROOT: ${DATASET_ROOT}
+      MAX_ITEMS: ${MAX_ITEMS}
+      CHROMA_PERSIST_DIR: ${CHROMA_PERSIST_DIR}
+      COLLECTION_NAME: ${COLLECTION_NAME}
+      IMAGES_DIR: ${IMAGES_DIR}
+      AGENT_MODEL: ${AGENT_MODEL}
+      VLM_MODEL: ${VLM_MODEL}
+      KAGGLE_DATASET_SLUG: ${KAGGLE_DATASET_SLUG}
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN}
+      ADMIN_KEY: ${ADMIN_KEY}
+      AUTH0_DOMAIN: d273liu.ca.auth0.com
+      AUTH0_AUDIENCE: https://d273liu.ca.auth0.com/api/v2/
+      AUTH0_ISSUER: https://d273liu.ca.auth0.com/
+      AUTH0_CLIENT_ID: G3cUNE1TJgDRlxR5bVbZAOeTss2sAjTT
+      AUTH0_CLIENT_SECRET: mMFu61vM38UmXkx8_EENNxeY8f6WVC316i_1MdE50_1G7LnzQvp3rRApTU5e5mbY
+      DATA_DIR: /app/data
+      PORT: ${PORT:-8000}
+    volumes:
+      - backend-data:/app/data
+      - backend-chroma:/app/data/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app_net
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  ngrok:
+    profiles: ["tunnel"]
+    image: ngrok/ngrok:latest
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    command: ["http", "frontend:80"]
+    depends_on:
+      - frontend
+    restart: unless-stopped
+    networks:
+      - app_net
+
+volumes:
+  backend-data:
+  backend-chroma:
+
+networks:
+  app_net:
+    driver: bridge

@@ -4,8 +4,8 @@
  * Connects frontend to backend chat endpoints with streaming support
  */
 
-export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
-export const IMAGE_BASE = (import.meta.env.VITE_IMAGE_URL as string | undefined) ?? '';
+import { API_BASE, IMAGE_BASE } from '../lib/api-base';
+export { API_BASE, IMAGE_BASE };
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

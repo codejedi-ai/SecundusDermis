@@ -15,6 +15,40 @@ if (!crypto.randomUUID) {
 import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from './lib/auth-context'
+
+// AuthCallback component for handling Auth0 redirect
+function AuthCallback() {
+  const { signIn } = useAuth();
+  const [error, setError] = React.useState<string | null>(null);
+
+  useEffect(() => {
+    // Auth context automatically handles the callback
+    // This component just provides a retry option if it fails
+    const timer = setTimeout(() => {
+      setError('Login is taking longer than expected...');
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="loading-container">
+      <div className="loading-spinner"></div>
+      <p>Completing sign in...</p>
+      {error && (
+        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <p style={{ color: '#c45c5c', marginBottom: '0.5rem' }}>{error}</p>
+          <button
+            onClick={() => signIn().catch(console.error)}
+            className="auth-button-primary"
+          >
+            Retry Sign In
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 import './index.css'
 import { ShopProvider, useShop } from './lib/shop-context'
 import { AuthProvider } from './lib/auth-context'
@@ -36,8 +70,6 @@ import FAQ from './pages/FAQ'
 import Blog from './pages/Blog'
 import BlogPost from './pages/BlogPost'
 import NewBlog from './pages/NewBlog'
-import SignIn from './pages/SignIn'
-import SignUp from './pages/SignUp'
 import Account from './pages/Account'
 import Cart from './pages/Cart'
 import ChatWidget from './components/ChatWidget'
@@ -143,8 +175,10 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/about" element={<About />} />
-                <Route path="/sign-in" element={<SignIn />} />
-                <Route path="/sign-up" element={<SignUp />} />
+                <Route
+                  path="/auth/callback"
+                  element={<AuthCallback />}
+                />
                 <Route path="/account" element={<Account />} />
                 <Route path="/cart" element={<Cart />} />
 

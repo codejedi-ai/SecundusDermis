@@ -10,7 +10,7 @@ const FALLBACK = '/img/photo-6311392.jpg'
 export default function Product() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { session } = useAuth()
+  const { session, signIn } = useAuth()
   const { addToCart, cart } = useCart()
 
   const [product, setProduct] = useState<fashionApi.Product | null>(null)
@@ -139,7 +139,10 @@ export default function Product() {
           )
         ) : (
           <p className="product-signin-hint">
-            <Link to="/sign-in">Sign in</Link> to reserve this piece.
+            You need to sign in to reserve this piece.{' '}
+            <button className="link-button" onClick={() => signIn().catch(() => {})}>
+              Continue with Auth0
+            </button>
           </p>
         )}
       </div>

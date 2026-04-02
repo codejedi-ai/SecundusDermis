@@ -1,6 +1,6 @@
 """
 Simple in-memory cart for SecundusDermis demo.
-Cart stored per user session.
+Cart stored per user email (not session_id) to share data across login methods.
 """
 
 from typing import Dict, List, Optional
@@ -20,25 +20,27 @@ class CartResponse(BaseModel):
     total: float
 
 
-# In-memory cart store: session_id -> {product_id -> CartItem}
+# In-memory cart store: email -> {product_id -> CartItem}
 _carts: Dict[str, Dict[str, CartItem]] = {}
 
 
-def get_cart(session_id: str) -> CartResponse:
-    """Get cart for a user session."""
-    items_dict = _carts.get(session_id, {})
+def get_cart(email: str) -> CartResponse:
+    """Get cart for a user by email."""
+    email = email.lower().strip()
+    items_dict = _carts.get(email, {})
     items = list(items_dict.values())
     total = sum(item.price * item.quantity for item in items)
     return CartResponse(items=items, total=round(total, 2))
 
 
-def add_to_cart(session_id: str, product_id: str, product_name: str, 
+def add_to_cart(email: str, product_id: str, product_name: str,
                 price: float, image_url: str, quantity: int = 1) -> CartResponse:
     """Add item to cart or update quantity if exists."""
-    if session_id not in _carts:
-        _carts[session_id] = {}
-    
-    cart = _carts[session_id]
+    email = email.lower().strip()
+    if email not in _carts:
+        _carts[email] = {}
+
+    cart = _carts[email]
     if product_id in cart:
         cart[product_id].quantity += quantity
     else:
@@ -49,33 +51,35 @@ def add_to_cart(session_id: str, product_id: str, product_name: str,
             image_url=image_url,
             quantity=quantity,
         )
-    return get_cart(session_id)
+    return get_cart(email)
 
 
-def update_cart_item(session_id: str, product_id: str, quantity: int) -> CartResponse:
+def update_cart_item(email: str, product_id: str, quantity: int) -> CartResponse:
     """Update item quantity. Remove if quantity <= 0."""
-    if session_id not in _carts:
+    email = email.lower().strip()
+    if email not in _carts:
         return CartResponse(items=[], total=0.0)
-    
-    cart = _carts[session_id]
+
+    cart = _carts[email]
     if product_id not in cart:
-        return get_cart(session_id)
-    
+        return get_cart(email)
+
     if quantity <= 0:
         del cart[product_id]
     else:
         cart[product_id].quantity = quantity
-    
-    return get_cart(session_id)
+
+    return get_cart(email)
 
 
-def remove_from_cart(session_id: str, product_id: str) -> CartResponse:
+def remove_from_cart(email: str, product_id: str) -> CartResponse:
     """Remove item from cart."""
-    return update_cart_item(session_id, product_id, 0)
+    return update_cart_item(email, product_id, 0)
 
 
-def clear_cart(session_id: str) -> CartResponse:
+def clear_cart(email: str) -> CartResponse:
     """Clear entire cart."""
-    if session_id in _carts:
-        _carts[session_id] = {}
+    email = email.lower().strip()
+    if email in _carts:
+        _carts[email] = {}
     return CartResponse(items=[], total=0.0)

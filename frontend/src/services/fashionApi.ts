@@ -3,12 +3,11 @@
  * Typed client for the SecundusDermis FastAPI backend.
  *
  * Dev (Vite proxy):   all calls go to /api/* → localhost:8000/*
- * Prod:               set VITE_API_URL=https://your-backend.com
- *                     set VITE_IMAGE_URL=https://your-backend.com  (for /images/* assets)
+ * Prod: same-origin /api and /images via reverse proxy (see nginx.conf).
  */
 
-export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
-export const IMAGE_BASE = (import.meta.env.VITE_IMAGE_URL as string | undefined) ?? '';
+import { API_BASE, IMAGE_BASE } from '../lib/api-base';
+export { API_BASE, IMAGE_BASE };
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

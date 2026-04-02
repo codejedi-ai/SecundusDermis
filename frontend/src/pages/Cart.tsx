@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth-context'
 
 const Cart = () => {
   const { cart, removeFromCart, updateQuantity } = useCart()
-  const { session } = useAuth()
+  const { session, signIn } = useAuth()
   const [updating, setUpdating] = useState<string | null>(null)
 
   const handleUpdate = async (productId: string, quantity: number) => {
@@ -40,7 +40,9 @@ const Cart = () => {
             <ShoppingBag size={64} strokeWidth={1} />
             <h2>Sign in to view your portfolio</h2>
             <p>Your reserved pieces are saved to your patron account.</p>
-            <Link to="/sign-in" className="shop-now-btn">Sign In</Link>
+            <button className="shop-now-btn" onClick={() => signIn().catch(() => {})}>
+              Continue with Auth0
+            </button>
           </div>
         ) : cart.items.length > 0 ? (
           <div className="cart-content">

@@ -11,7 +11,7 @@ const Header = () => {
   const location = useLocation()
   const isShopPage = location.pathname === '/shop'
 
-  const { user } = useAuth()
+  const { user, signIn } = useAuth()
   const { cartCount } = useCart()
   const { inputValue, setInputValue, setQuery } = useShop()
   const navigate = useNavigate()
@@ -109,9 +109,32 @@ const Header = () => {
               <ShoppingCart size={20} />
               {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </Link>
-            <Link to={user ? "/account" : "/sign-in"} className="nav-icon-link">
-              <User size={20} />
-            </Link>
+            {user ? (
+              <Link
+                to="/account"
+                className="nav-icon-link"
+                aria-label="Account"
+              >
+                <User size={20} />
+                <span className="nav-icon-text">Account</span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="nav-icon-link nav-signin-btn"
+                aria-label="Sign In"
+                onClick={() => {
+                  console.log('[Header] Sign in clicked');
+                  signIn().catch((err) => {
+                    console.error('[Header] Sign in error:', err);
+                    alert(`Sign in failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                  });
+                }}
+              >
+                <User size={20} />
+                <span className="nav-icon-text">Sign In</span>
+              </button>
+            )}
           </nav>
         </div>
 
@@ -131,11 +154,31 @@ const Header = () => {
           </div>
         )}
         <nav className="mobile-nav">
-          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact'], ['/cart', 'Cart'], [user ? '/account' : '/sign-in', user ? 'Account' : 'Sign In']] as [string, string][]).map(([to, label]) => (
+          {([['/', 'Home'], ['/about', 'About'], ['/shop', 'Shop'], ['/blog', 'Journal'], ['/faq', 'FAQ'], ['/contact', 'Contact'], ['/cart', 'Cart']] as [string, string][]).map(([to, label]) => (
             <Link key={to} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
               {label}
             </Link>
           ))}
+          {user ? (
+            <Link
+              to="/account"
+              className="mobile-nav-link"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Account
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="mobile-nav-link"
+              onClick={() => {
+                setIsMenuOpen(false)
+                signIn().catch(() => {})
+              }}
+            >
+              Sign In
+            </button>
+          )}
           {user && (
             <Link to="/blog/new" className="mobile-nav-link mobile-nav-write" onClick={() => setIsMenuOpen(false)}>
               ✏️ Write

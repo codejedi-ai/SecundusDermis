@@ -1,21 +1,44 @@
+# Production template — copy to `docker-compose.yml`, fill in values, keep `docker-compose.yml` gitignored.
+# Local testing with Docker uses `docker-compose.local.yml` + repo-root `.env` instead.
+
 services:
   backend:
     build:
       context: ./backend
     environment:
-      - GEMINI_API_KEY=your_gemini_api_key
-      - GEMINI_MODEL=gemini-3.1-pro-preview-customtools
-      - GEMINI_THINKING_LEVEL=low
-      - KAGGLE_API_TOKEN=your_kaggle_api_token
-      - PORT=8000
+      GEMINI_API_KEY: YOUR_GEMINI_KEY
+      GOOGLE_API_KEY: YOUR_GEMINI_KEY
+      EMBEDDING_MODEL: gemini-embedding-2-preview
+      EMBEDDING_DIM: "1536"
+      GEMINI_RPM: "15"
+      DATASET_ROOT: ./data
+      MAX_ITEMS: "0"
+      CHROMA_PERSIST_DIR: ./chroma_db
+      COLLECTION_NAME: fashion_catalog
+      IMAGES_DIR: ./data/selected_images
+      AGENT_MODEL: gemini-3.1-pro-preview-customtools
+      VLM_MODEL: gemini-3.1-pro-preview
+      KAGGLE_DATASET_SLUG: silverstone1903/deep-fashion-multimodal
+      KAGGLE_API_TOKEN: YOUR_KAGGLE_TOKEN
+      ADMIN_KEY: YOUR_ADMIN_SECRET
+      AUTH0_DOMAIN: your-tenant.auth0.com
+      AUTH0_AUDIENCE: ""
+      AUTH0_ISSUER: ""
+      AUTH0_CLIENT_ID: YOUR_AUTH0_CLIENT_ID
+      AUTH0_CLIENT_SECRET: ""
+      DATA_DIR: /app/data
+      PORT: "8000"
     volumes:
       - backend-data:/app/data
+      - backend-chroma:/app/data/chroma_db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - app_net
 
   frontend:
     build:
@@ -25,15 +48,25 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - app_net
 
   ngrok:
+    profiles: ["tunnel"]
     image: ngrok/ngrok:latest
-    command: http --url=your-ngrok-domain.ngrok-free.app frontend:80
     environment:
-      - NGROK_AUTHTOKEN=your_ngrok_authtoken
+      NGROK_AUTHTOKEN: YOUR_NGROK_TOKEN
+    command: ["http", "frontend:80"]
     depends_on:
       - frontend
     restart: unless-stopped
+    networks:
+      - app_net
 
 volumes:
   backend-data:
+  backend-chroma:
+
+networks:
+  app_net:
+    driver: bridge

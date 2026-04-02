@@ -5,7 +5,6 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 
-# /api proxied by nginx → backend:8000 (no VITE_API_URL needed)
 RUN npm run build
 
 FROM nginx:alpine

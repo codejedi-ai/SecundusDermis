@@ -245,11 +245,21 @@
 @media (max-width: 768px) {
   .shop-body { flex-direction: column; }
 
+  .shop-sidebar-wrap {
+    width: 100% !important; /* override inline desktop resize width */
+    position: static;
+    top: auto;
+    height: auto;
+    border-right: none;
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
   .shop-sidebar {
     width: 100%;
-    position: static;
-    max-height: none;
-    border-right: none;
+    height: auto;
     border-bottom: 1px solid var(--color-border, #e8e8e8);
     padding: 14px 16px;
   }
@@ -271,6 +281,27 @@
     border-color: transparent;
   }
 
+  .shop-main {
+    width: 100%;
+  }
+
   .shop-grid,
-  .shop-loading { grid-template-columns: repeat(2, 1fr); }
+  .shop-loading {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .shop-card-img {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .shop-grid,
+  .shop-loading {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
 }

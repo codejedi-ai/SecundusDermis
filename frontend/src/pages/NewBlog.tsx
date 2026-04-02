@@ -15,7 +15,7 @@ const today = new Date().toISOString().slice(0, 10)
 
 export default function NewBlog() {
   const navigate = useNavigate()
-  const { user, session, isLoading } = useAuth()
+  const { user, session, isLoading, signIn } = useAuth()
   const { refreshBlog } = useBlog()
 
   const [form, setForm] = useState({
@@ -40,6 +40,11 @@ export default function NewBlog() {
       setForm(f => ({ ...f, author: user.name || user.email.split('@')[0] }))
     }
   }, [user])
+
+  // No sign-in page in this deployment; auto open Auth0 when user is missing.
+  useEffect(() => {
+    if (!isLoading && !user) signIn().catch(() => {})
+  }, [isLoading, user, signIn])
 
   const set = (field: string, value: string | boolean) =>
     setForm(f => ({ ...f, [field]: value }))
@@ -90,15 +95,12 @@ export default function NewBlog() {
         <div className="container">
           <div className="auth-container" style={{ textAlign: 'center', padding: '100px 20px' }}>
             <div className="auth-header">
-              <h1 className="auth-title">Sign In Required</h1>
-              <p className="auth-description">Only logged-in users can create journal entries.</p>
+              <h1 className="auth-title">Redirecting…</h1>
+              <p className="auth-description">Opening Auth0 login.</p>
             </div>
             <div className="auth-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <button onClick={() => navigate('/sign-in')} className="btn btn-primary">
-                Sign In
-              </button>
-              <button onClick={() => navigate('/sign-up')} className="btn btn-secondary">
-                Create Account
+              <button onClick={() => signIn().catch(() => {})} className="btn btn-primary">
+                Continue with Auth0
               </button>
             </div>
           </div>

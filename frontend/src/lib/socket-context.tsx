@@ -3,7 +3,7 @@
  *
  * Persistent Socket.IO connection to the FastAPI backend.
  *
- * - Connects to the backend at VITE_API_URL (minus the /api prefix).
+ * - Connects to the same origin as the SPA (nginx proxies /socket.io).
  * - Joins a per-session "room" so the backend can push events targeted
  *   at this browser session.
  * - Automatically reconnects on network drops.
@@ -25,9 +25,7 @@ import React, {
 import { io, Socket } from 'socket.io-client';
 import type { UiAction } from '../services/chatApi';
 
-// Strip /api suffix from VITE_API_URL to get the bare server origin.
-const RAW_API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
-const SOCKET_ORIGIN = RAW_API.replace(/\/api\/?$/, '') || window.location.origin;
+import { socketOrigin } from './api-base';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +62,7 @@ export function SocketProvider({
   useEffect(() => {
     if (!sessionId) return;
 
-    const socket = io(SOCKET_ORIGIN, {
+    const socket = io(socketOrigin(), {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       // Auto-reconnect with exponential back-off

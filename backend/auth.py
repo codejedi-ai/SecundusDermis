@@ -122,3 +122,37 @@ def logout(session_id: str) -> bool:
         _save_sessions(sessions)
         return True
     return False
+
+
+def create_user_from_oauth(email: str, name: Optional[str] = None) -> UserResponse:
+    """
+    Create (or return existing) user from Auth0 claims.
+
+    Password is not used for Auth0 users; we store a placeholder password_hash so
+    the existing JSON schema remains compatible.
+    """
+    email = email.lower().strip()
+    users = _users()
+    if email not in users:
+        # Placeholder hash; OAuth flow does not validate passwords.
+        placeholder_password = os.urandom(16).hex()
+        users[email] = {
+            "password_hash": _hash_password(placeholder_password),
+            "name": name or email.split("@")[0],
+        }
+        _save_users(users)
+    # Ensure name is at least set (in case first insert had no name).
+    if name and users[email].get("name") != name:
+        users[email]["name"] = name
+        _save_users(users)
+    return UserResponse(email=email, name=users[email].get("name"))
+
+
+def create_session_for_email(email: str) -> str:
+    """Create a new backend session_id for an existing email."""
+    email = email.lower().strip()
+    sessions = _sessions()
+    session_id = os.urandom(16).hex()
+    sessions[session_id] = email
+    _save_sessions(sessions)
+    return session_id

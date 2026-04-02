@@ -5,9 +5,14 @@
  *
  * - Logged-in users: messages are persisted to the backend (GET/POST/DELETE /conversations)
  *   and cached in localStorage as a fast-load fallback.
- * - Anonymous users: localStorage only.
+ * - Anonymous users (Guest mode): localStorage only, limited to 10 messages.
  * - `chatSessionId` is the ADK session ID sent to POST /chat. It is scoped per user
  *   so each account gets its own continuous agent memory.
+ *
+ * Guest Mode:
+ * - Messages stored in localStorage for 2 days
+ * - After 10 messages, user is prompted to sign in to continue
+ * - On sign-in, all guest messages are migrated to backend
  */
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -30,6 +35,10 @@ interface ConvoContextType {
   messages: ConvoMessage[];
   chatSessionId: string;
   addMessage: (msg: Omit<ConvoMessage, 'id' | 'timestamp'>) => void;
+  clearMessages: () => void;
+  isGuest: boolean;
+  guestMessageCount: number;
+  isGuestLimitReached: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -44,6 +53,9 @@ export const INITIAL_MESSAGE: ConvoMessage = {
   timestamp: 0,
 };
 
+export const GUEST_MESSAGE_LIMIT = 10;
+const GUEST_STORAGE_EXPIRY_DAYS = 2;
+
 // ── LocalStorage helpers ───────────────────────────────────────────────────
 
 function lsSessionKey(userEmail?: string) {
@@ -52,6 +64,10 @@ function lsSessionKey(userEmail?: string) {
 
 function lsMessagesKey(userEmail?: string) {
   return userEmail ? `sd_chat_messages_${userEmail}` : 'sd_chat_messages_anon';
+}
+
+function lsGuestExpiryKey() {
+  return 'sd_chat_guest_expiry';
 }
 
 function loadOrCreateChatSessionId(userEmail?: string): string {
@@ -82,7 +98,30 @@ function saveLocalMessages(msgs: ConvoMessage[], userEmail?: string) {
   try {
     const safe = msgs.map(m => ({ ...m, previewUrl: undefined, products: undefined }));
     localStorage.setItem(lsMessagesKey(userEmail), JSON.stringify(safe));
+    // Set expiry for guest data
+    if (!userEmail) {
+      const expiry = Date.now() + (GUEST_STORAGE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+      localStorage.setItem(lsGuestExpiryKey(), expiry.toString());
+    }
   } catch { /* storage quota exceeded — ignore */ }
+}
+
+function isGuestDataExpired(): boolean {
+  try {
+    const expiry = localStorage.getItem(lsGuestExpiryKey());
+    if (!expiry) return false;
+    return Date.now() > parseInt(expiry, 10);
+  } catch {
+    return false;
+  }
+}
+
+function clearGuestData() {
+  try {
+    localStorage.removeItem(lsMessagesKey(undefined));
+    localStorage.removeItem(lsSessionKey(undefined));
+    localStorage.removeItem(lsGuestExpiryKey());
+  } catch { /* ignore */ }
 }
 
 // ── Context ────────────────────────────────────────────────────────────────
@@ -100,6 +139,20 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const [chatSessionId, setChatSessionId] = useState(() =>
     loadOrCreateChatSessionId(userEmail),
   );
+
+  // Guest mode state
+  const isGuest = !userEmail;
+  const guestMessageCount = isGuest ? Math.max(0, messages.length - 1) : 0; // Exclude initial message
+  const isGuestLimitReached = isGuest && guestMessageCount >= GUEST_MESSAGE_LIMIT;
+
+  // Check for expired guest data on mount
+  useEffect(() => {
+    if (isGuest && isGuestDataExpired()) {
+      console.log('[convo-context] Guest data expired, clearing...');
+      clearGuestData();
+      setMessages([INITIAL_MESSAGE]);
+    }
+  }, [isGuest]);
 
   // When the authenticated user changes, switch to their session + history.
   useEffect(() => {
@@ -143,7 +196,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
         });
     } else {
       // Anonymous — localStorage only.
-      setMessages(loadLocalMessages(userEmail));
+      setMessages(loadLocalMessages(undefined));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail, authSessionId]);
@@ -151,6 +204,12 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   // ── addMessage ─────────────────────────────────────────────────────────
 
   const addMessage = (msg: Omit<ConvoMessage, 'id' | 'timestamp'>) => {
+    // Block guest users if limit reached
+    if (isGuest && isGuestLimitReached) {
+      console.warn('[convo-context] Guest limit reached, message not added');
+      return;
+    }
+
     const full: ConvoMessage = {
       ...msg,
       id: crypto.randomUUID(),
@@ -179,12 +238,21 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
           }
         });
     } else {
-      console.log('[convo-context] Anonymous user, message saved to browser only');
+      console.log(`[convo-context] Guest user, message ${guestMessageCount + 1}/${GUEST_MESSAGE_LIMIT} saved to browser`);
+    }
+  };
+
+  const clearMessages = () => {
+    setMessages([INITIAL_MESSAGE]);
+    if (userEmail) {
+      saveLocalMessages([INITIAL_MESSAGE], userEmail);
+    } else {
+      clearGuestData();
     }
   };
 
   return (
-    <ConvoContext.Provider value={{ messages, chatSessionId, addMessage }}>
+    <ConvoContext.Provider value={{ messages, chatSessionId, addMessage, clearMessages, isGuest, guestMessageCount, isGuestLimitReached }}>
       {children}
     </ConvoContext.Provider>
   );

@@ -1,5 +1,6 @@
-# Local docker-compose override
+# Production compose contains secrets — use docker-compose.yml.example as template
 docker-compose.yml
+docker-compose.override.yml
 
 # Environment files
 .env

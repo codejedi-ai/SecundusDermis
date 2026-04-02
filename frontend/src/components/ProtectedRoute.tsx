@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
       return <>{fallback}</>
     }
 
-    return <Navigate to="/sign-in" replace />
+    return <Navigate to="/account" replace />
   }
 
   return <>{children}</>

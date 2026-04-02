@@ -1,34 +1,39 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import { Package, Heart, Settings, LogOut } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Package, LogOut } from 'lucide-react';
+import { useEffect } from 'react';
 
 const Account = () => {
-  const { user, signOut, isLoading } = useAuth();
+  const { user, signOut, signIn, isLoading } = useAuth();
   const navigate = useNavigate();
-  const [localUser, setLocalUser] = useState<{ email: string; name: string } | null>(null);
 
+  // Clear any stale localStorage on mount
   useEffect(() => {
-    const sessionId = localStorage.getItem('sd_session_id');
-    if (sessionId && !user) {
-      // Fetch user if not loaded by context
-      fetch(`${API_BASE}/auth/me`, { headers: { 'session_id': sessionId } })
-        .then(r => r.ok ? r.json() : null)
-        .then(u => { if (u) setLocalUser(u); })
-        .catch(() => {});
-    } else if (user) {
-      setLocalUser(user);
+    try {
+      const oldSessionKey = 'sd_session_id';
+      const oldSession = localStorage.getItem(oldSessionKey);
+      if (oldSession) {
+        console.log('[Account] Clearing stale localStorage session');
+        localStorage.removeItem(oldSessionKey);
+      }
+    } catch {
+      // Ignore
     }
-  }, [user]);
+  }, []);
+
+  // Redirect to Auth0 if not logged in
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      console.log('[Account] No user, redirecting to Auth0');
+      signIn().catch(console.error);
+    }
+  }, [isLoading, user, signIn]);
 
   const handleSignOut = async () => {
     await signOut();
-    setLocalUser(null);
     navigate('/');
   };
-
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860';
-  const displayUser = localUser || user;
 
   if (isLoading) {
     return (
@@ -40,23 +45,16 @@ const Account = () => {
     );
   }
 
-  if (!displayUser) {
+  if (!user) {
     return (
       <div className="account-page">
         <div className="container">
           <div className="auth-container">
             <div className="auth-header">
-              <h1 className="auth-title">Sign In Required</h1>
-              <p className="auth-description">Please sign in to view your account.</p>
+              <h1 className="auth-title">Redirecting to Auth0…</h1>
+              <p className="auth-description">Please wait while we redirect you to sign in.</p>
             </div>
-            <div className="auth-actions">
-              <button onClick={() => navigate('/sign-in')} className="auth-button-primary">
-                Sign In
-              </button>
-              <button onClick={() => navigate('/sign-up')} className="auth-button-secondary">
-                Create Account
-              </button>
-            </div>
+            <div className="loading-spinner"></div>
           </div>
         </div>
       </div>

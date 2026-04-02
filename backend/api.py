@@ -16,12 +16,12 @@ import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional, AsyncGenerator
+from typing import Annotated, Any, Optional, AsyncGenerator
 
 import numpy as np
 from dotenv import load_dotenv
 import socketio
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,15 +33,21 @@ from pydantic import BaseModel
 from auth import (
     UserCreate, UserLogin, UserResponse, LoginResponse,
     create_user, authenticate_user, get_user_from_session, logout,
+    create_user_from_oauth, create_session_for_email,
 )
+from auth_resolve import ResolvedAuth, optional_resolved_auth, require_resolved_auth
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from conversations import get_messages, append_message, clear_messages as clear_convo
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
+from auth0 import parse_bearer_authorization, verify_auth0_jwt, claims_to_user_response
 import config
 
-load_dotenv(Path(__file__).parent / ".env")
+_repo_env = Path(__file__).resolve().parent.parent / ".env"
+_backend_env = Path(__file__).resolve().parent / ".env"
+load_dotenv(_repo_env)
+load_dotenv(_backend_env, override=True)
 
 # ── Socket.IO server ───────────────────────────────────────────────────────────
 
@@ -212,14 +218,24 @@ def load_catalog() -> list[dict]:
     logger.info(f"Scanning images in: {images_path.absolute()}")
     
     catalog = []
+    # Keep IDs short (from CSV product_id) but unique across rows.
+    # If the same base product_id repeats, suffix with -2, -3...
+    product_id_counts: dict[str, int] = {}
     for img in sorted(images_path.glob("*.jpg")):
         row = rows.get(img.stem, {})
         gender = (row.get("gender", "") or "").strip().upper() or "unknown"
         cat = (row.get("product_type", "") or "").strip() or "unknown"
         desc = (row.get("caption", "") or "").strip()
+        base_pid = (row.get("product_id", "") or "").strip() or img.stem
+        count = product_id_counts.get(base_pid, 0) + 1
+        product_id_counts[base_pid] = count
+        pid = base_pid if count == 1 else f"{base_pid}-{count}"
         attrs = _extract_attrs(desc)
         catalog.append({
-            "product_id": img.stem, "image_id": img.stem,
+            "product_id": pid,
+            "base_product_id": base_pid,
+            "legacy_product_id": img.stem,  # old long URL compatibility
+            "image_id": img.stem,
             "product_name": _product_name(gender, cat, attrs), "description": desc,
             "gender": gender, "category": cat, "price": _price(cat),
             "image_url": f"/images/{img.name}", "image_path": str(img),
@@ -275,6 +291,10 @@ config.init_directories()
 app = FastAPI(title="SecundusDermis", version="5.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# Include server-side Auth0 router
+from auth0_server import router as auth0_server_router
+app.include_router(auth0_server_router)
+
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
@@ -314,9 +334,9 @@ class ConvoMessage(BaseModel):
     content: str
     timestamp: float
 
-async def dump_context_to_journal(session_id: str, email: str):
+async def dump_context_to_journal(email: str):
     """Summarize the current session history and save to journal as a catering diary entry."""
-    messages = get_messages(session_id)
+    messages = get_messages(email)
     if not messages: return
 
     logger.info(f"[DIARY DUMP] Summarizing journey for {email} ({len(messages)} messages)")
@@ -1160,6 +1180,57 @@ async def login(user: UserLogin):
     response.set_cookie(key="sd_session_id", value=session_id, max_age=30*24*60*60, httponly=True, samesite="lax", path="/")
     return response
 
+
+@app.post("/auth/auth0/login", response_model=LoginResponse)
+async def auth0_login(
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Auth0 login helper:
+    - Client sends `Authorization: Bearer <access_token>`
+    - Backend verifies JWT using Auth0 JWKS
+    - Backend creates a local backend session and sets `sd_session_id` cookie
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    bearer = parse_bearer_authorization(authorization)
+    if not bearer:
+        logger.warning("Auth0 login: Missing Bearer token")
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+
+    logger.info(f"Auth0 login: Received token, verifying...")
+    try:
+        claims = verify_auth0_jwt(bearer)
+        logger.info(f"Auth0 JWT verified: sub={claims.get('sub')}, email={claims.get('email')}")
+    except Exception as e:
+        logger.error(f"Auth0 JWT verification failed: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    
+    user_from_token = claims_to_user_response(claims)
+
+    # Create local user + session so existing cookie/session-id based endpoints work.
+    logger.info(f"Creating/updating user: {user_from_token.email}")
+    create_user_from_oauth(email=user_from_token.email, name=user_from_token.name)
+    session_id = create_session_for_email(user_from_token.email)
+    logger.info(f"Session created: {session_id}")
+
+    response = JSONResponse(
+        content={
+            "session_id": session_id,
+            "user": {"email": user_from_token.email, "name": user_from_token.name},
+        }
+    )
+    response.set_cookie(
+        key="sd_session_id",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    logger.info(f"Auth0 login complete for {user_from_token.email}")
+    return response
+
 @app.post("/auth/logout")
 async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if session_id: logout(session_id)
@@ -1168,26 +1239,48 @@ async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias
     return response
 
 @app.get("/auth/me")
-async def get_current_user(session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
-    user = get_user_from_session(session_id)
-    if not user: raise HTTPException(status_code=401, detail="Invalid session")
-    return user
+async def get_current_user(
+    resolved: Annotated[Optional[ResolvedAuth], Depends(optional_resolved_auth)],
+):
+    if not resolved:
+        raise HTTPException(status_code=401, detail="No session or valid bearer token")
+    return resolved.user
+
+
+@app.get("/auth/public-config")
+async def auth_public_config():
+    """SPA reads Auth0 (and similar) settings from the backend — no frontend env vars."""
+    return {
+        "auth0_domain": os.getenv("AUTH0_DOMAIN", ""),
+        "auth0_client_id": os.getenv("AUTH0_CLIENT_ID", ""),
+        "auth0_audience": os.getenv("AUTH0_AUDIENCE", ""),
+    }
 
 @app.get("/cart", response_model=CartResponse)
-async def get_user_cart(session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: return CartResponse(items=[], total=0.0)
-    return get_cart(session_id)
+async def get_user_cart(
+    resolved: Annotated[Optional[ResolvedAuth], Depends(optional_resolved_auth)],
+):
+    if not resolved:
+        return CartResponse(items=[], total=0.0)
+    return get_cart(resolved.storage_key)
 
 @app.post("/cart", response_model=CartResponse)
-async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
-    return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
+async def add_item_to_cart(
+    product_id: str,
+    product_name: str,
+    price: float,
+    image_url: str,
+    resolved: Annotated[ResolvedAuth, Depends(require_resolved_auth)],
+    quantity: int = 1,
+):
+    return add_to_cart(resolved.storage_key, product_id, product_name, price, image_url, quantity)
 
 @app.delete("/cart/{product_id}", response_model=CartResponse)
-async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
-    return remove_from_cart(session_id, product_id)
+async def remove_cart_item_endpoint(
+    product_id: str,
+    resolved: Annotated[ResolvedAuth, Depends(require_resolved_auth)],
+):
+    return remove_from_cart(resolved.storage_key, product_id)
 
 @app.get("/catalog/browse")
 async def catalog_browse(offset: int = 0, limit: int = 24, gender: Optional[str] = None, category: Optional[str] = None, q: Optional[str] = None):
@@ -1271,9 +1364,10 @@ async def journal_post(slug: str):
 
 
 @app.post("/journal")
-async def create_journal_post(post: dict, session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id or not get_user_from_session(session_id):
-        raise HTTPException(status_code=401, detail="Authentication required")
+async def create_journal_post(
+    post: dict,
+    resolved: Annotated[ResolvedAuth, Depends(require_resolved_auth)],
+):
     
     slug = re.sub(r"[^a-z0-9]+", "-", post.get("title", "untitled").lower()).strip("-")
     path = config.JOURNAL_DIR / f"{slug}.json"
@@ -1290,34 +1384,42 @@ async def create_journal_post(post: dict, session_id: Optional[str] = Header(def
 # ── Conversations (Session Sync) ──────────────────────────────────────────────
 
 @app.get("/conversations")
-async def get_conversations(session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: return {"messages": []}
-    return {"messages": get_messages(session_id)}
+async def get_conversations(
+    resolved: Annotated[Optional[ResolvedAuth], Depends(optional_resolved_auth)],
+):
+    if not resolved:
+        return {"messages": []}
+    return {"messages": get_messages(resolved.storage_key)}
 
 @app.post("/conversations")
-async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
-    messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
-    
+async def add_message(
+    msg: ConvoMessage,
+    resolved: Annotated[ResolvedAuth, Depends(require_resolved_auth)],
+):
+    messages = append_message(resolved.storage_key, msg.role, msg.content, msg.timestamp)
+
     # TRIGGER: After 10 messages, dump a reflection to the journal
     if len(messages) == 10:
-        user = get_user_from_session(session_id)
-        if user:
-            # Run in background to not block the request
-            asyncio.create_task(dump_context_to_journal(session_id, user.email))
-            
+        asyncio.create_task(dump_context_to_journal(resolved.storage_key))
+
     return {"messages": messages}
 
 @app.delete("/conversations")
-async def clear_conversation_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
-    clear_convo(session_id)
+async def clear_conversation_endpoint(
+    resolved: Annotated[ResolvedAuth, Depends(require_resolved_auth)],
+):
+    clear_convo(resolved.storage_key)
     return {"status": "cleared"}
 
 
 @app.get("/catalog/product/{product_id}")
 async def catalog_product(product_id: str):
-    item = next((p for p in state.catalog if p["product_id"] == product_id), None)
+    item = next((
+        p for p in state.catalog
+        if p.get("product_id") == product_id
+        or p.get("legacy_product_id") == product_id
+        or p.get("base_product_id") == product_id
+    ), None)
     if item is None: raise HTTPException(status_code=404, detail="Product not found")
     return {k: v for k, v in item.items() if k != "image_path"}
 

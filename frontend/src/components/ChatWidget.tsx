@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { ImagePlus, Loader2, MessageCircle, Send, X, Trash2, Sparkles, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import * as chatApi from '../services/chatApi';
 import { useShop } from '../lib/shop-context';
-import { useConvo } from '../lib/convo-context';
+import { useConvo, GUEST_MESSAGE_LIMIT } from '../lib/convo-context';
 import { useAuth } from '../lib/auth-context';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -25,8 +25,8 @@ interface ThinkingStep {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function ChatWidget() {
-  const { messages, chatSessionId, addMessage } = useConvo();
-  const { session } = useAuth();
+  const { messages, chatSessionId, addMessage, isGuest, guestMessageCount, isGuestLimitReached } = useConvo();
+  const { session, signIn } = useAuth();
   const authSessionId = session?.session_id;
 
   const [open, setOpen] = useState(false);
@@ -149,6 +149,9 @@ export default function ChatWidget() {
             if (hasSidebar && location.pathname !== '/shop') {
               navigate('/shop');
             }
+            if (hasSidebar && window.matchMedia('(max-width: 768px)').matches) {
+              setOpen(false);
+            }
           }
         }
       }
@@ -203,6 +206,29 @@ export default function ChatWidget() {
               <X size={18} />
             </button>
           </div>
+
+          {/* Guest limit warning */}
+          {isGuest && isGuestLimitReached && (
+            <div className="chat-guest-warning">
+              <Sparkles size={16} className="warning-icon" />
+              <span>
+                You've reached the guest message limit ({GUEST_MESSAGE_LIMIT} messages).
+              </span>
+              <button className="guest-signin-btn" onClick={() => signIn().catch(console.error)}>
+                Sign in to continue
+              </button>
+            </div>
+          )}
+
+          {/* Guest progress indicator */}
+          {isGuest && !isGuestLimitReached && (
+            <div className="chat-guest-progress">
+              <span>Guest mode: {guestMessageCount}/{GUEST_MESSAGE_LIMIT} messages</span>
+              <button className="guest-signin-link" onClick={() => signIn().catch(console.error)}>
+                Sign in to save progress
+              </button>
+            </div>
+          )}
 
           {/* Messages */}
           <div className="chat-messages">
