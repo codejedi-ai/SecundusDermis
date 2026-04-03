@@ -9,12 +9,27 @@ import logging
 import os
 import smtplib
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 SMTP_HOST = os.getenv("GMAIL_SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("GMAIL_SMTP_PORT", "587"))
+
+TEMPLATES_DIR = Path(__file__).parent / "templates" / "email"
+
+
+def _load_template(name: str, **kwargs) -> str:
+    """Load and format an email template."""
+    path = TEMPLATES_DIR / name
+    if not path.exists():
+        logger.error("Email template not found: %s", path)
+        return ""
+    content = path.read_text(encoding="utf-8")
+    for key, value in kwargs.items():
+        content = content.replace(f"{{{{{key}}}}}", str(value))
+    return content
 
 
 def _gmail_user() -> str:
@@ -32,6 +47,7 @@ def gmail_smtp_configured() -> bool:
 
 def send_password_reset_email(
     to_addr: str,
+    user_name: str,
     reset_url: str,
     *,
     app_name: str = "Secundus Dermis",
@@ -43,23 +59,8 @@ def send_password_reset_email(
         raise RuntimeError("Gmail SMTP is not configured (missing GMAIL_USER or GMAIL_PASSWORD)")
 
     subject = f"Reset your {app_name} password"
-    text = (
-        f"You requested a password reset for {app_name}.\n\n"
-        f"Open this link to choose a new password (valid for 1 hour):\n{reset_url}\n\n"
-        "If you did not request this, you can ignore this email."
-    )
-    html = f"""\
-<!DOCTYPE html>
-<html>
-<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
-  <p>You requested a password reset for <strong>{app_name}</strong>.</p>
-  <p><a href="{reset_url}" style="color: #0d47a1;">Reset your password</a></p>
-  <p style="font-size: 0.9em; color: #444;">If the button link does not work, copy and paste:<br/>
-  <code style="word-break: break-all;">{reset_url}</code></p>
-  <p style="font-size: 0.85em; color: #666;">If you did not request this, you can ignore this email.</p>
-</body>
-</html>
-"""
+    text = _load_template("password_reset.txt", user_name=user_name, reset_url=reset_url, app_name=app_name)
+    html = _load_template("password_reset.html", user_name=user_name, reset_url=reset_url, app_name=app_name)
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -83,6 +84,7 @@ def send_password_reset_email(
 
 def send_verification_email(
     to_addr: str,
+    user_name: str,
     verify_url: str,
     *,
     app_name: str = "Secundus Dermis",
@@ -93,24 +95,9 @@ def send_verification_email(
     if not sender or not password:
         raise RuntimeError("Gmail SMTP is not configured (missing GMAIL_USER or GMAIL_PASSWORD)")
 
-    subject = f"Verify your email for {app_name}"
-    text = (
-        f"Thanks for signing up with {app_name}.\n\n"
-        f"Confirm your email by opening this link (valid for 48 hours):\n{verify_url}\n\n"
-        "If you did not create an account, you can ignore this email."
-    )
-    html = f"""\
-<!DOCTYPE html>
-<html>
-<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
-  <p>Thanks for signing up with <strong>{app_name}</strong>.</p>
-  <p><a href="{verify_url}" style="color: #0d47a1;">Verify your email</a></p>
-  <p style="font-size: 0.9em; color: #444;">If the link does not work, copy and paste:<br/>
-  <code style="word-break: break-all;">{verify_url}</code></p>
-  <p style="font-size: 0.85em; color: #666;">If you did not create an account, ignore this email.</p>
-</body>
-</html>
-"""
+    subject = f"Welcome to {app_name}"
+    text = _load_template("verification.txt", user_name=user_name, verify_url=verify_url, app_name=app_name)
+    html = _load_template("verification.html", user_name=user_name, verify_url=verify_url, app_name=app_name)
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -132,9 +119,9 @@ def send_verification_email(
     )
 
 
-def try_send_verification_email(to_addr: str, verify_url: str) -> tuple[bool, Optional[str]]:
+def try_send_verification_email(to_addr: str, user_name: str, verify_url: str) -> tuple[bool, Optional[str]]:
     try:
-        send_verification_email(to_addr, verify_url)
+        send_verification_email(to_addr, user_name, verify_url)
         return True, None
     except OSError as e:
         logger.exception("SMTP verification email failed (network or TLS)")
@@ -147,13 +134,13 @@ def try_send_verification_email(to_addr: str, verify_url: str) -> tuple[bool, Op
         return False, str(e)
 
 
-def try_send_password_reset_email(to_addr: str, reset_url: str) -> tuple[bool, Optional[str]]:
+def try_send_password_reset_email(to_addr: str, user_name: str, reset_url: str) -> tuple[bool, Optional[str]]:
     """
     Send reset email. Returns (ok, error_message).
     On failure, error_message is a short description for logs (no secrets).
     """
     try:
-        send_password_reset_email(to_addr, reset_url)
+        send_password_reset_email(to_addr, user_name, reset_url)
         return True, None
     except OSError as e:
         logger.exception("SMTP send failed (network or TLS)")

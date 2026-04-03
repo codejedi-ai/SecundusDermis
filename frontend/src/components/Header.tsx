@@ -112,12 +112,20 @@ const Header = () => {
             {user ? (
               <Link
                 to="/account"
-                className="nav-icon-link"
+                className="nav-icon-link nav-icon-link-account"
                 aria-label="Account"
-                title="Account"
+                title={user.name || user.email}
               >
-                <User size={20} />
-                <span className="nav-icon-text">Account</span>
+                <User size={18} />
+                <span className="nav-icon-text nav-account-name">
+                  {user.name
+                    ? user.name.length > 14
+                      ? user.name.slice(0, 14) + '…'
+                      : user.name
+                    : user.email.length > 18
+                      ? user.email.slice(0, 18) + '…'
+                      : user.email}
+                </span>
               </Link>
             ) : (
               <Link
@@ -158,7 +166,7 @@ const Header = () => {
             ['/contact', 'Contact'],
             ['/cart', 'Cart'],
             ...(user
-              ? [['/account', 'Account']] as [string, string][]
+              ? [['/account', (user.name || user.email).length > 18 ? (user.name || user.email).slice(0, 18) + '…' : (user.name || user.email)]] as [string, string][]
               : [['/sign-in', 'Sign In']] as [string, string][]),
           ] as [string, string][]).map(([to, label]) => (
             <Link key={`${to}-${label}`} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>

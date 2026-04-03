@@ -1,51 +1,152 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import { Package, Heart, Settings, MapPin, CreditCard } from 'lucide-react';
-import AccountSidebar from '../components/AccountSidebar';
+import { Package, Heart, Settings, MapPin, CreditCard, CheckCircle, AlertCircle } from 'lucide-react';
+import { API_BASE } from '../lib/api-base';
 import '../styles/account.css';
 
-const Account = () => {
-  const { user, signOut, isLoading } = useAuth();
-  const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState('profile');
+interface AccountContext {
+  activeSection: string;
+  setActiveSection: (section: string) => void;
+}
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+/** Profile section with editable name field, validation, and save feedback. */
+function ProfileSection({ user }: { user: { name: string | null; email: string } }) {
+  const [name, setName] = useState(user.name || '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name cannot be empty');
+      return;
+    }
+    if (trimmed.length > 100) {
+      setError('Name must be under 100 characters');
+      return;
+    }
+    setError('');
+    setSaving(true);
+    setSaved(false);
+    try {
+      const sessionId = document.cookie
+        .split('; ')
+        .find(r => r.startsWith('sd_session_id='))
+        ?.split('=')[1];
+
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'session-id': sessionId || '',
+        },
+        body: JSON.stringify({ name: trimmed }),
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to update profile');
+      }
+
+      // Update the auth context user so header/account reflect new name
+      const updated = await res.json();
+      const event = new CustomEvent('sd:user:updated', { detail: updated });
+      window.dispatchEvent(event);
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  return (
+    <div className="account-section">
+      <h2 className="section-title">Profile Information</h2>
+      <div className="account-profile-card">
+        <div className="account-profile-avatar">
+          {(name.trim() || user.email).charAt(0).toUpperCase()}
+        </div>
+        <div className="account-profile-info">
+          <h3 className="account-profile-name">{name.trim() || '—'}</h3>
+          <p className="account-profile-email">{user.email}</p>
+        </div>
+      </div>
+      <div className="account-form">
+        <div className="form-group">
+          <label htmlFor="profile-name">Full Name</label>
+          <input
+            id="profile-name"
+            type="text"
+            value={name}
+            onChange={e => { setName(e.target.value); setError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+            className="form-input"
+            placeholder="Enter your name"
+            maxLength={100}
+          />
+        </div>
+        <div className="form-group">
+          <label>Email Address</label>
+          <input type="email" value={user.email} className="form-input" disabled />
+        </div>
+        <div className="profile-actions">
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+        {saved && (
+          <div className="form-message form-message-success">
+            <CheckCircle size={16} /> Profile updated successfully
+          </div>
+        )}
+        {error && (
+          <div className="form-message form-message-error">
+            <AlertCircle size={16} /> {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const Account = () => {
+  const { user, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const { activeSection } = useOutletContext<AccountContext>();
 
   if (isLoading) {
     return (
-      <div className="account-page">
-        <div className="account-layout">
-          <div className="account-loading">
-            <div className="loading-spinner"></div>
-            <p>Loading account...</p>
-          </div>
-        </div>
+      <div className="account-loading-full">
+        <div className="loading-spinner"></div>
+        <p>Loading account...</p>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="account-page">
-        <div className="account-layout">
-          <div className="auth-container">
-            <div className="auth-header">
-              <h1 className="auth-title">Sign In Required</h1>
-              <p className="auth-description">Please sign in to view your account.</p>
-            </div>
-            <div className="auth-actions">
-              <button onClick={() => navigate('/sign-in')} className="auth-button-primary">
-                Sign In
-              </button>
-              <button onClick={() => navigate('/sign-up')} className="auth-button-secondary">
-                Create Account
-              </button>
-            </div>
-          </div>
+      <div className="auth-container">
+        <div className="auth-header">
+          <h1 className="auth-title">Sign In Required</h1>
+          <p className="auth-description">Please sign in to view your account.</p>
+        </div>
+        <div className="auth-actions">
+          <button onClick={() => navigate('/sign-in')} className="auth-button-primary">
+            Sign In
+          </button>
+          <button onClick={() => navigate('/sign-up')} className="auth-button-secondary">
+            Create Account
+          </button>
         </div>
       </div>
     );
@@ -54,22 +155,7 @@ const Account = () => {
   const renderSection = () => {
     switch (activeSection) {
       case 'profile':
-        return (
-          <div className="account-section">
-            <h2 className="section-title">Profile Information</h2>
-            <div className="account-form">
-              <div className="form-group">
-                <label>Full Name</label>
-                <input type="text" defaultValue={user.name || ''} className="form-input" />
-              </div>
-              <div className="form-group">
-                <label>Email Address</label>
-                <input type="email" defaultValue={user.email} className="form-input" disabled />
-              </div>
-              <button className="btn btn-primary">Save Changes</button>
-            </div>
-          </div>
-        );
+        return <ProfileSection user={user} />;
 
       case 'orders':
         return (
@@ -202,22 +288,7 @@ const Account = () => {
     }
   }
 
-  return (
-    <div className="account-page">
-      <div className="account-layout">
-        <AccountSidebar
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-          onSignOut={handleSignOut}
-          userEmail={user.email}
-          userName={user.name}
-        />
-        <main className="account-main">
-          {renderSection()}
-        </main>
-      </div>
-    </div>
-  );
+  return renderSection();
 };
 
 export default Account;

@@ -1,6 +1,4 @@
 # Local docker-compose override
-docker-compose.yml
-
 # Environment files
 .env
 .env.*

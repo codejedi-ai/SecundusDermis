@@ -126,6 +126,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Listen for profile updates from Account page
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ email: string; name: string | null }>).detail;
+      setUser({ email: detail.email, name: detail.name || '' });
+    };
+    window.addEventListener('sd:user:updated', handler);
+    return () => window.removeEventListener('sd:user:updated', handler);
+  }, []);
+
   const signUp = async (email: string, password: string, name?: string): Promise<RegisterResult> => {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',

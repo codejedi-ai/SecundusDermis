@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { Calendar, User, Clock, ArrowLeft } from 'lucide-react'
 import * as blogApi from '../services/blogApi'
+import '../styles/blog.css'
 
 export default function BlogPost() {
   const { id } = useParams<{ id: string }>()  // "id" param = slug

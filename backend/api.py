@@ -38,10 +38,11 @@ from pydantic import BaseModel
 
 from auth import (
     UserCreate, UserLogin, UserResponse, LoginResponse, PasswordReset,
-    RegisterResponse, VerifyEmailRequest,
+    RegisterResponse, VerifyEmailRequest, ProfileUpdate,
     create_user, try_authenticate, get_user_from_session, logout,
     create_reset_token, verify_reset_token, reset_password,
-    verify_email_token, resend_verification_token,
+    verify_email_token, resend_verification_token, get_user_by_email,
+    update_user_profile,
 )
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from conversations import get_messages, append_message, clear_messages as clear_convo
@@ -1167,7 +1168,7 @@ async def register(user: UserCreate):
     verify_url = f"{config.FRONTEND_PUBLIC_URL}/verify-email?token={token}"
     base_message = "Check your email to verify your account before signing in."
     if gmail_smtp_configured():
-        ok, err = try_send_verification_email(user_resp.email, verify_url)
+        ok, err = try_send_verification_email(user_resp.email, user_resp.name or user_resp.email, verify_url)
         if not ok:
             logging.getLogger(__name__).error(
                 "Verification email failed for %s: %s", user_resp.email, err or "unknown"
@@ -1200,9 +1201,10 @@ async def resend_verification_ep(payload: dict):
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
     token = resend_verification_token(email)
+    user = get_user_by_email(email)
     verify_url = f"{config.FRONTEND_PUBLIC_URL}/verify-email?token={token}"
-    if token and gmail_smtp_configured():
-        ok, err = try_send_verification_email(email.lower(), verify_url)
+    if token and user and gmail_smtp_configured():
+        ok, err = try_send_verification_email(email.lower(), user.name or email, verify_url)
         if not ok:
             logging.getLogger(__name__).error(
                 "Resend verification email failed for %s: %s", email, err or "unknown"
@@ -1237,12 +1239,29 @@ async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias
     response.delete_cookie(key="sd_session_id", path="/")
     return response
 
+
 @app.get("/auth/me")
 async def get_current_user(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
     if not user: raise HTTPException(status_code=401, detail="Invalid session")
     return user
+
+
+@app.put("/auth/me")
+async def update_profile(
+    profile: "ProfileUpdate",
+    session_id: Optional[str] = Header(default=None, alias="session-id"),
+):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    current = get_user_from_session(session_id)
+    if not current:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    updated = update_user_profile(email=current.email, name=profile.name)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated
 
 
 @app.post("/auth/request-password-reset")
@@ -1257,8 +1276,9 @@ async def request_password_reset(email_data: dict):
         raise HTTPException(status_code=400, detail="Email required")
     
     token = create_reset_token(email)
+    user = get_user_by_email(email)
     
-    if not token:
+    if not token or not user:
         log.info("Password reset: no local user for %s — returning 404 to client", email.strip())
         raise HTTPException(
             status_code=404,
@@ -1272,7 +1292,7 @@ async def request_password_reset(email_data: dict):
             "Password reset: sending SMTP mail to %s (smtp configured)",
             email.strip().lower(),
         )
-        ok, err = try_send_password_reset_email(email.strip().lower(), reset_url)
+        ok, err = try_send_password_reset_email(email.strip().lower(), user.name or email, reset_url)
         if ok:
             log.info("Password reset: SMTP reported success for %s", email.strip().lower())
         else:

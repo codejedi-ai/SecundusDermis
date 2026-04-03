@@ -23,20 +23,19 @@ const Cart = () => {
   const grandTotal = cart.total + shipping
 
   return (
-    <div className="cart-page">
-      <div className="container">
-        <div className="cart-header">
-          <Link to="/shop" className="back-link">
-            <ArrowLeft size={20} />
-            Continue Browsing
-          </Link>
-          <h1 className="page-title">Your Portfolio</h1>
-          <p className="page-description">
-            Review your reserved pieces and finalise your commission.
-          </p>
-        </div>
+    <div className="cart-container" style={{ padding: '40px' }}>
+      <div className="cart-header">
+        <Link to="/shop" className="back-link">
+          <ArrowLeft size={20} />
+          Continue Browsing
+        </Link>
+        <h1 className="page-title">Your Portfolio</h1>
+        <p className="page-description">
+          Review your reserved pieces and finalise your commission.
+        </p>
+      </div>
 
-        {!session ? (
+      {!session ? (
           <div className="cart-empty">
             <ShoppingBag size={64} strokeWidth={1} />
             <h2>Sign in to view your portfolio</h2>
@@ -122,7 +121,6 @@ const Cart = () => {
             </Link>
           </div>
         )}
-      </div>
     </div>
   )
 }

@@ -149,6 +149,22 @@
   color: var(--color-charcoal);
 }
 
+/* Account link — shows name instead of just icon */
+.nav-icon-link-account {
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.nav-account-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cart-badge {
   position: absolute;
   top: -2px;

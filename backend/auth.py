@@ -95,6 +95,10 @@ class PasswordReset(BaseModel):
     email: Optional[str] = None  # Optional - token identifies the user
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+
+
 class VerifyEmailRequest(BaseModel):
     token: str
 
@@ -236,6 +240,16 @@ def logout(session_id: str) -> bool:
     return False
 
 
+def get_user_by_email(email: str) -> Optional[UserResponse]:
+    """Get user profile by email."""
+    email = email.lower().strip()
+    users = _users()
+    user = users.get(email)
+    if not user:
+        return None
+    return UserResponse(email=email, name=user.get("name"))
+
+
 def create_reset_token(email: str) -> Optional[str]:
     """
     Create a password reset token for the given email.
@@ -310,5 +324,21 @@ def reset_password(token: str, new_password: str) -> bool:
     for sid in sessions_to_remove:
         del sessions[sid]
     _save_sessions(sessions)
-    
+
     return True
+
+
+def update_user_profile(email: str, name: Optional[str] = None) -> Optional[UserResponse]:
+    """
+    Update user profile fields (currently just name).
+    Returns updated UserResponse or None if user not found.
+    """
+    email = email.lower().strip()
+    users = _users()
+    user = users.get(email)
+    if not user:
+        return None
+    if name is not None:
+        users[email]["name"] = name
+        _save_users(users)
+    return UserResponse(email=email, name=users[email].get("name"))

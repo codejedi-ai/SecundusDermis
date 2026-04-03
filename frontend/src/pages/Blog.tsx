@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Calendar, User, ArrowRight, Clock, PenLine } from 'lucide-react'
 import { useAuth } from '../lib/auth-context'
 import { useBlog } from '../lib/blog-context'
+import '../styles/blog.css'
 
 const Blog = () => {
   const { user } = useAuth()
@@ -44,7 +45,7 @@ const Blog = () => {
         {/* Featured post */}
         {!loading && featured && (
           <section className="featured-post">
-            <Link to={`/blog/${featured.slug}`} className="featured-card-link" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+            <Link to={`/blog/${featured.slug}`} className="featured-card-link">
               <div className="featured-content">
                 <div className="featured-image">
                   <img src={featured.image} alt={featured.title} />
@@ -61,9 +62,9 @@ const Blog = () => {
                   </div>
                   <h2 className="featured-title">{featured.title}</h2>
                   <p className="featured-excerpt">{featured.excerpt}</p>
-                  <div className="btn btn-primary">
+                  <a className="read-more read-more-featured">
                     Read Full Article <ArrowRight size={20} />
-                  </div>
+                  </a>
                 </div>
               </div>
             </Link>
@@ -100,7 +101,7 @@ const Blog = () => {
           ) : grid.length > 0 ? (
             <div className="posts-grid">
               {grid.map(post => (
-                <Link key={post.slug} to={`/blog/${post.slug}`} className="blog-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <Link key={post.slug} to={`/blog/${post.slug}`} className="blog-card-link">
                   <article className="blog-card">
                     <div className="blog-image">
                       <img src={post.image} alt={post.title} />

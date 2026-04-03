@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:1
 FROM node:20-slim AS builder
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
-# /api proxied by nginx → backend:8000 (no VITE_API_URL needed)
+COPY . .
 RUN npm run build
 
 FROM nginx:alpine

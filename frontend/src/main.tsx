@@ -12,12 +12,12 @@ if (!crypto.randomUUID) {
   }
 }
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import './index.css'
 import { ShopProvider, useShop } from './lib/shop-context'
-import { AuthProvider } from './lib/auth-context'
+import { AuthProvider, useAuth } from './lib/auth-context'
 import { ConvoProvider, useConvo } from './lib/convo-context'
 import { CartProvider } from './lib/cart-context'
 import { BlogProvider } from './lib/blog-context'
@@ -26,6 +26,9 @@ import { SocketProvider, useSocket } from './lib/socket-context'
 import Header from './components/Header'
 
 import ShopSidebar from './components/ShopSidebar'
+import AccountSidebar from './components/AccountSidebar'
+import ResizableSidebar from './components/ResizableSidebar'
+import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
 import Product from './pages/Product'
 import Shop from './pages/Shop'
@@ -114,14 +117,45 @@ function UiActionExecutor() {
   return null;
 }
 
-// Layout shared by /shop and /product/:id — sidebar rendered once here
+// Layout shared by pages that need the resizable sidebar
 function ShopLayout() {
   return (
     <div className="shop-layout">
       <div className="shop-body">
-        <ShopSidebar />
+        <ResizableSidebar>
+          <ShopSidebar />
+        </ResizableSidebar>
         <div className="shop-main">
           <Outlet />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Layout for account pages — uses AccountSidebar instead of ShopSidebar
+function AccountLayout() {
+  const [activeSection, setActiveSection] = useState('profile');
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
+  return (
+    <div className="shop-layout">
+      <div className="shop-body">
+        <ResizableSidebar>
+          <AccountSidebar
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            onSignOut={handleSignOut}
+          />
+        </ResizableSidebar>
+        <div className="shop-main">
+          <Outlet context={{ activeSection, setActiveSection }} />
         </div>
       </div>
     </div>
@@ -151,14 +185,20 @@ function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/account" element={<Account />} />
-                <Route path="/cart" element={<Cart />} />
 
                 {/* Shop area — sidebar lives here, not in individual pages */}
                 <Route element={<ShopLayout />}>
                   <Route path="/shop" element={<Shop />} />
                   <Route path="/product/:id" element={<Product />} />
                 </Route>
+
+                {/* Account area — uses AccountSidebar, not ShopSidebar */}
+                <Route element={<AccountLayout />}>
+                  <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+                </Route>
+
+                {/* Cart — no sidebar needed */}
+                <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
 
                 <Route path="/faq" element={<FAQ />} />
                 <Route path="/contact" element={<Contact />} />

@@ -1,0 +1,11 @@
+Dear {{user_name}},
+
+Welcome to Secundus Dermis. Your journey into the future of bespoke AI styling begins here.
+
+To finalize your account setup and explore our latest curation, please verify your email address (valid for 48 hours):
+{{verify_url}}
+
+If you did not sign up for Secundus Dermis, you can safely ignore this email. We look forward to seeing you when the moment is right.
+
+With warmth,
+The Secundus Dermis Team

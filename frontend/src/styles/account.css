@@ -177,6 +177,54 @@
 
 .account-section {
   max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Profile card — avatar + name + email */
+.account-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  background: var(--color-gray-50);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-gray-200);
+}
+
+.account-profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.account-profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-profile-name {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.account-profile-email {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .section-title {
@@ -223,6 +271,33 @@
 .form-input:disabled {
   background: var(--color-gray-100);
   cursor: not-allowed;
+}
+
+/* Profile save actions + feedback messages */
+.profile-actions {
+  margin-top: 0.5rem;
+}
+
+.form-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.form-message-success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.form-message-error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
 }
 
 /* Settings List */
@@ -306,6 +381,8 @@
   text-align: center;
   padding: 3rem 2rem;
   color: var(--color-text-muted);
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .empty-state svg {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Copy, Check } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -13,6 +14,7 @@ const ResetPassword = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const tokenFromUrl = searchParams.get('token');
@@ -20,6 +22,12 @@ const ResetPassword = () => {
       setToken(tokenFromUrl);
     }
   }, [searchParams]);
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,6 +174,47 @@ const ResetPassword = () => {
                   No reset token provided. Please use the link from your email.
                 </div>
               )}
+
+              <div className="copy-link-section" style={{ 
+                marginBottom: '1.5rem', 
+                padding: '1rem', 
+                background: '#f9f9f9', 
+                border: '1px solid #eee',
+                fontSize: '0.85rem'
+              }}>
+                <p style={{ margin: '0 0 0.5rem 0', color: '#666' }}>If you need to copy this reset link:</p>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    value={window.location.href} 
+                    style={{ 
+                      flex: 1, 
+                      padding: '0.4rem', 
+                      border: '1px solid #ddd', 
+                      fontSize: '0.75rem',
+                      background: '#fff'
+                    }}
+                  />
+                  <button 
+                    type="button" 
+                    onClick={handleCopyLink}
+                    style={{
+                      padding: '0.4rem',
+                      background: '#111',
+                      color: '#fff',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Copy link"
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
 
               <button
                 type="submit"

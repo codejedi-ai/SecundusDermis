@@ -3,6 +3,8 @@ __pycache__
 *.pyc
 *.pyo
 .env
+.git
 data/
 chroma_db/
 *.zip
+uv.lock

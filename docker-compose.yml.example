@@ -36,9 +36,11 @@ services:
 
   ngrok:
     image: ngrok/ngrok:latest
-    command: http --url=your-ngrok-domain.ngrok-free.app frontend:80
+    command: sh -c 'if [ -n "$NGROK_DOMAIN" ]; then ngrok http frontend:80 --domain "$NGROK_DOMAIN"; else ngrok http frontend:80; fi'
     environment:
       - NGROK_AUTHTOKEN=your_ngrok_authtoken
+      # Optional: use a fixed custom domain if you have one.
+      # - NGROK_DOMAIN=your-ngrok-domain.ngrok-free.app
     depends_on:
       - frontend
     restart: unless-stopped
