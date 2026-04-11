@@ -1,16 +1,49 @@
 .about-page {
-  padding-top: var(--header-height);
+  padding-top: 0;
 }
 
-.about-intro {
-  padding: var(--space-16) var(--space-6);
+/* ── Hero: two columns — 9:16 image | copy + playground ── */
+.about-hero-split {
+  padding: calc(var(--header-height) + var(--space-10)) var(--space-6) var(--space-16);
   background: var(--color-gray-50);
-  text-align: center;
 }
 
-.about-intro-inner {
-  max-width: 800px;
+.about-hero-inner {
+  max-width: 1180px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr);
+  gap: var(--space-10) var(--space-12);
+  align-items: start;
+}
+
+/* Portrait frame: width capped by viewport height so 9:16 fits on screen */
+.about-hero-media {
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  width: min(100%, calc(85vh * 9 / 16));
+  max-width: 100%;
+  aspect-ratio: 9 / 16;
+  background: var(--color-gray-200);
+  justify-self: start;
+}
+
+.about-hero-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.about-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  text-align: left;
 }
 
 .about-label {
@@ -20,21 +53,44 @@
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--color-accent-dark);
-  margin-bottom: var(--space-3);
 }
 
-.about-title {
+.about-hero-title {
   font-family: var(--font-display);
-  font-size: clamp(2rem, 5vw, 3rem);
+  font-size: clamp(1.85rem, 4vw, 2.75rem);
   font-weight: 400;
   color: var(--color-primary);
-  margin-bottom: var(--space-5);
+  line-height: 1.15;
+  margin: 0;
 }
 
-.about-subtitle {
-  font-size: 1.125rem;
-  line-height: 1.8;
+.about-hero-lead {
+  font-size: 1.0625rem;
+  line-height: 1.75;
   color: var(--color-gray-600);
+  margin: 0;
+}
+
+.about-hero-lead--muted {
+  font-size: 0.9375rem;
+  color: var(--color-gray-500);
+}
+
+.about-playground {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+
+.about-playground-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent-dark);
 }
 
 /* Combined Section */
@@ -223,6 +279,17 @@
 
 /* Responsive */
 @media (max-width: 1024px) {
+  .about-hero-inner {
+    grid-template-columns: 1fr;
+    gap: var(--space-10);
+  }
+
+  .about-hero-media {
+    width: min(100%, 320px);
+    margin: 0 auto;
+    justify-self: center;
+  }
+
   .combined-inner {
     grid-template-columns: 1fr;
     gap: var(--space-12);

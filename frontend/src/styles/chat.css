@@ -574,17 +574,40 @@ a.chat-product-card {
   padding: 0.25rem 0;
 }
 
+/* ── Embedded (e.g. About page) ── */
+.chat-widget--embedded {
+  position: relative;
+  bottom: auto;
+  right: auto;
+  z-index: 1;
+  align-items: stretch;
+  width: 100%;
+}
+
+.chat-widget--embedded .chat-panel--embedded {
+  width: 100%;
+  max-width: none;
+  height: clamp(320px, 52vh, 560px);
+  max-height: min(560px, 70vh);
+  animation: none;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
 /* ── Mobile ── */
 @media (max-width: 480px) {
-  .chat-widget {
+  .chat-widget:not(.chat-widget--embedded) {
     bottom: 1rem;
     right: 1rem;
   }
 
-  .chat-panel {
+  .chat-panel:not(.chat-panel--embedded) {
     width: calc(100vw - 2rem);
     height: calc(100vh - 5rem);
     max-height: none;
+  }
+
+  .chat-widget--embedded .chat-panel--embedded {
+    height: min(420px, 55vh);
   }
 
   .chat-products {

@@ -4,20 +4,32 @@ import { ArrowRight } from 'lucide-react'
 const About = () => {
   return (
     <div className="about-page">
-      {/* Intro */}
-      <section className="about-intro">
-        <div className="about-intro-inner">
-          <span className="about-label">What is this?</span>
-          <h1 className="about-title">An AI Agent Playground</h1>
-          <p className="about-subtitle">
-            Secundus Dermis is not a real clothing brand. It is a demonstration
-            environment for exploring how a conversational AI agent handles
-            customer support and product discovery in a simulated fashion boutique.
-          </p>
+      {/* Hero: 9:16 image left · copy + embedded AI playground right */}
+      <section className="about-hero-split" aria-labelledby="about-hero-title">
+        <div className="about-hero-inner">
+          <figure className="about-hero-media">
+            <img
+              src="/image-blog.jpeg"
+              alt="Secundus Dermis — AI-powered fashion editorial"
+              loading="eager"
+            />
+          </figure>
+
+          <div className="about-hero-copy">
+            <span className="about-label">What is this?</span>
+            <h1 id="about-hero-title" className="about-hero-title">
+              An AI Agent Playground
+            </h1>
+            <p className="about-hero-lead">
+              Secundus Dermis is not a real clothing brand. It is a demonstration
+              environment for exploring how a conversational AI agent handles
+              customer support and product discovery in a simulated fashion boutique.
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* Combined Purpose & Stack */}
+      {/* Purpose & stack */}
       <section className="about-combined">
         <div className="combined-inner">
           <div className="mission-content">
@@ -31,10 +43,7 @@ const About = () => {
               across page navigation — all with minimal API spend.
             </p>
             <p className="mission-text">
-              The chat widget in the bottom-right corner is the core of the demo.
-              Try asking about products, requesting styling advice, or uploading a
-              photo to search visually. Every agent response is backed by a real
-              tool call — no fabricated details.
+              Every agent response is backed by a real tool call — no fabricated details.
             </p>
             <p className="mission-text">
               The site is also designed to be a target environment for external AI
@@ -47,7 +56,7 @@ const About = () => {
 
           <div className="craft-content">
             <span className="craft-label">Tech Stack</span>
-            <h2 className="craft-title">FastAPI · React · Google ADK</h2>
+            <h2 className="craft-title">FastAPI · React · Gemini</h2>
             <p className="craft-text">
               The backend is a FastAPI server that loads the DeepFashion dataset
               from Kaggle on first run, serves the catalog, runs the Gemini agent,
@@ -72,7 +81,6 @@ const About = () => {
         </div>
       </section>
 
-      {/* Dataset credit */}
       <section className="about-commitment">
         <div className="commitment-inner">
           <h2 className="commitment-title">Data & Credits</h2>
@@ -89,9 +97,8 @@ const About = () => {
             <div className="commitment-item">
               <h3>AI Models</h3>
               <p>
-                Conversational agent and visual search powered by Google Gemini
-                via the Google ADK (Agent Development Kit). Agent tool-calling
-                keeps responses grounded in real catalog data.
+                Conversational agent and visual search powered by Google Gemini.
+                Tool-calling keeps responses grounded in real catalog data.
               </p>
             </div>
             <div className="commitment-item">

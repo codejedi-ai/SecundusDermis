@@ -117,6 +117,13 @@ function UiActionExecutor() {
   return null;
 }
 
+/** Floating chat is hidden on About — that page embeds the same widget inline. */
+function AppChatWidget() {
+  const { pathname } = useLocation()
+  if (pathname === '/about') return null
+  return <ChatWidget />
+}
+
 // Layout shared by pages that need the resizable sidebar
 function ShopLayout() {
   return (
@@ -207,7 +214,7 @@ function App() {
                 <Route path="/blog/:id" element={<BlogPost />} />
               </Routes>
             </main>
-            <ChatWidget />
+            <AppChatWidget />
           </div>
           </MonitorProvider>
         </Router>

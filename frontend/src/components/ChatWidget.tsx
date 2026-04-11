@@ -24,12 +24,15 @@ interface ThinkingStep {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function ChatWidget() {
+export type ChatWidgetVariant = 'floating' | 'embedded';
+
+export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWidgetVariant }) {
   const { messages, chatSessionId, addMessage } = useConvo();
   const { session } = useAuth();
   const authSessionId = session?.session_id;
 
-  const [open, setOpen] = useState(false);
+  const embedded = variant === 'embedded';
+  const [open, setOpen] = useState(embedded);
   const [input, setInput] = useState('');
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,6 +47,10 @@ export default function ChatWidget() {
   const location = useLocation();
 
   const { gender, category, query, setGender, setCategory } = useShop();
+
+  useEffect(() => {
+    if (embedded) setOpen(true);
+  }, [embedded]);
 
   // Check backend availability once on mount
   useEffect(() => {
@@ -188,9 +195,9 @@ export default function ChatWidget() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="chat-widget">
+    <div className={`chat-widget${embedded ? ' chat-widget--embedded' : ''}`}>
       {open && (
-        <div className="chat-panel">
+        <div className={`chat-panel${embedded ? ' chat-panel--embedded' : ''}`}>
           {/* Header */}
           <div className="chat-header">
             <div className="chat-header-info">
@@ -199,9 +206,11 @@ export default function ChatWidget() {
                 {online === false ? 'Offline' : 'Online'}
               </span>
             </div>
-            <button className="chat-close" onClick={() => setOpen(false)} aria-label="Close chat">
-              <X size={18} />
-            </button>
+            {!embedded && (
+              <button className="chat-close" onClick={() => setOpen(false)} aria-label="Close chat">
+                <X size={18} />
+              </button>
+            )}
           </div>
 
           {/* Messages */}
@@ -396,13 +405,15 @@ export default function ChatWidget() {
         </div>
       )}
 
-      <button
-        className="chat-toggle"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-label={open ? 'Close chat' : 'Open AI fashion assistant'}
-      >
-        {open ? <X size={22} /> : <MessageCircle size={22} />}
-      </button>
+      {!embedded && (
+        <button
+          className="chat-toggle"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-label={open ? 'Close chat' : 'Open AI fashion assistant'}
+        >
+          {open ? <X size={22} /> : <MessageCircle size={22} />}
+        </button>
+      )}
     </div>
   );
 }

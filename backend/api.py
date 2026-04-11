@@ -43,6 +43,7 @@ from auth import (
     create_reset_token, verify_reset_token, reset_password,
     verify_email_token, resend_verification_token, get_user_by_email,
     update_user_profile,
+    UsersStorageFullError,
 )
 from cart import CartItem, CartResponse, get_cart, add_to_cart, update_cart_item, remove_from_cart, clear_cart
 from conversations import get_messages, append_message, clear_messages as clear_convo
@@ -1161,7 +1162,13 @@ async def upload_image_for_agent(file: UploadFile = File(...)):
 
 @app.post("/auth/register", response_model=RegisterResponse, status_code=201)
 async def register(user: UserCreate):
-    out = create_user(email=user.email, password=user.password, name=user.name)
+    try:
+        out = create_user(email=user.email, password=user.password, name=user.name)
+    except UsersStorageFullError:
+        raise HTTPException(
+            status_code=503,
+            detail="User database is full: no empty Notion row (clear Email on a row to add capacity).",
+        )
     if out is None:
         raise HTTPException(status_code=400, detail="Email already registered")
     user_resp, token = out
