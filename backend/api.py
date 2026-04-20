@@ -1513,6 +1513,23 @@ async def on_ping(sid, data):
 # All /socket.io/* requests are handled by Socket.IO;
 # everything else is forwarded to the FastAPI app.
 
+# â”€â”€ Serve React SPA (Single-Container Mode) ──────────────────────────────────
+_FRONTEND_DIR = Path(os.getenv("FRONTEND_DIR", "./static"))
+
+if (_FRONTEND_DIR / "index.html").exists():
+    logger.info(f"Frontend detected at {_FRONTEND_DIR}. Enabling SPA serving.")
+    _assets = _FRONTEND_DIR / "assets"
+    if _assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="spa_assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("images/") or full_path.startswith("uploads/"):
+             raise HTTPException(status_code=404)
+        return FileResponse(_FRONTEND_DIR / "index.html")
+else:
+    logger.info("No frontend found at static dir. API-only mode.")
+
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 

@@ -1,15 +1,19 @@
-# All runtime variables are set via .env file (see .env.example)
-# Rebuild: DOCKER_BUILDKIT=1 docker compose build --parallel
+# Secundus Dermis - Unified Application Container
+# Single container hosting both FastAPI (API) and React (Frontend)
+# Rebuild: DOCKER_BUILDKIT=1 docker compose build
 # Run:     docker compose up -d
 
 services:
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     volumes:
-      - /root/SecundusDermis/backend/data:/app/data
+      - ./backend/data:/app/data
     restart: unless-stopped
     networks:
       - app_network
@@ -20,37 +24,6 @@ services:
       retries: 3
       start_period: 120s
 
-  frontend:
-    build:
-      context: ./frontend
-    expose:
-      - "80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - app_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  ngrok:
-    image: ngrok/ngrok:latest
-    command: http frontend:80 --url ${NGROK_DOMAIN}
-    env_file:
-      - .env
-    depends_on:
-      frontend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - app_network
-
 networks:
   app_network:
     driver: bridge
-    # No 'internal: true' - containers can reach internet
-    # No ports exposed to host - host cannot access any container directly
