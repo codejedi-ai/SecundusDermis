@@ -14,14 +14,36 @@ const VITE_API = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 const VITE_IMG = (import.meta.env.VITE_IMAGE_URL as string | undefined)?.trim();
 const VITE_BACKEND = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.trim();
 
-/** Relative `/api` (proxied) or full URL to the API. */
-export const API_BASE = VITE_API || '/api';
-
 const DEFAULT_DEV_BACKEND = 'http://localhost:8000';
+const isBrowser = typeof window !== 'undefined';
+const isLocalHostPage = isBrowser && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+
+function normalizeApiBase(): string {
+  if (!VITE_API) return '/api';
+  // If the build is configured for localhost but page is remote (e.g. ngrok),
+  // force same-origin API so requests do not point to the viewer's localhost.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_API) && !isLocalHostPage) {
+    return '/api';
+  }
+  return VITE_API;
+}
+
+/** Relative `/api` (proxied) or full URL to the API. */
+export const API_BASE = normalizeApiBase();
 
 function computeImageBase(): string {
-  if (VITE_IMG) return VITE_IMG.replace(/\/$/, '');
-  if (VITE_BACKEND) return VITE_BACKEND.replace(/\/$/, '');
+  if (VITE_IMG) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_IMG) && !isLocalHostPage) {
+      return '';
+    }
+    return VITE_IMG.replace(/\/$/, '');
+  }
+  if (VITE_BACKEND) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_BACKEND) && !isLocalHostPage) {
+      return '';
+    }
+    return VITE_BACKEND.replace(/\/$/, '');
+  }
   if (VITE_API && /^https?:\/\//i.test(VITE_API)) {
     try {
       return new URL(VITE_API).origin;

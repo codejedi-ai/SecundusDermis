@@ -290,10 +290,27 @@ config.init_directories()
 app = FastAPI(title="SecundusDermis", version="5.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+
+class StripApiPrefixMiddleware:
+    """Allow frontend calls to /api/* when backend routes are defined at /*."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path == "/api":
+                scope = {**scope, "path": "/"}
+            elif path.startswith("/api/"):
+                scope = {**scope, "path": path[4:]}
+        await self.app(scope, receive, send)
+
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
 FRONTEND_DIST_DIR = Path(__file__).resolve().parent / "frontend_dist"
+BACKEND_PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 if FRONTEND_DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend_assets")
 
@@ -1490,6 +1507,14 @@ async def catalog_product(product_id: str):
 
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str):
+    backend_public_file = (BACKEND_PUBLIC_DIR / full_path).resolve()
+    if (
+        BACKEND_PUBLIC_DIR.exists()
+        and backend_public_file.is_file()
+        and str(backend_public_file).startswith(str(BACKEND_PUBLIC_DIR.resolve()))
+    ):
+        return FileResponse(backend_public_file)
+
     static_file = (FRONTEND_DIST_DIR / full_path).resolve()
     if (
         FRONTEND_DIST_DIR.exists()
@@ -1538,7 +1563,7 @@ async def on_ping(sid, data):
 # All /socket.io/* requests are handled by Socket.IO;
 # everything else is forwarded to the FastAPI app.
 
-socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=StripApiPrefixMiddleware(app))
 
 
 if __name__ == "__main__":
