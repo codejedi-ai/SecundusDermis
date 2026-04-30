@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // Write build output directly where backend serves static SPA files.
+    outDir: '../backend/frontend_dist',
+    emptyOutDir: true,
+  },
   server: {
     proxy: {
       // All /api/* calls → FastAPI backend (strips the /api prefix)

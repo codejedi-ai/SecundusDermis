@@ -3,13 +3,15 @@
 # Run:     docker compose up -d
 
 services:
-  backend:
+  secundus_dermis:
+    container_name: secundus_dermis
     build:
-      context: ./backend
+      context: .
+      dockerfile: app/Dockerfile
     env_file:
       - .env
     volumes:
-      - /root/SecundusDermis/backend/data:/app/data
+      - /tmp/secundus_dermis_data:/app/data
     restart: unless-stopped
     networks:
       - app_network
@@ -20,30 +22,13 @@ services:
       retries: 3
       start_period: 120s
 
-  frontend:
-    build:
-      context: ./frontend
-    expose:
-      - "80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - app_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   ngrok:
     image: ngrok/ngrok:latest
-    command: http frontend:80 --url ${NGROK_DOMAIN}
+    command: http https://secundus_dermis:8000 --url ${NGROK_DOMAIN}
     env_file:
       - .env
     depends_on:
-      frontend:
+      secundus_dermis:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -52,5 +37,3 @@ services:
 networks:
   app_network:
     driver: bridge
-    # No 'internal: true' - containers can reach internet
-    # No ports exposed to host - host cannot access any container directly

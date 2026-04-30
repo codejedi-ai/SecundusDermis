@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 _backend_dir = Path(__file__).resolve().parent
 load_dotenv(_backend_dir.parent / ".env")
-load_dotenv(_backend_dir / ".env", override=True)
+load_dotenv(_backend_dir / ".env", override=False)
 
 import asyncio
 import csv
@@ -293,6 +293,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent / "frontend_dist"
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend_assets")
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -1095,6 +1098,9 @@ async def gemini_chat_stream(
 
 @app.get("/")
 async def root():
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {"name": "SecundusDermis", "status": "running", "catalog_size": len(state.catalog)}
 
 @app.get("/health")
@@ -1481,6 +1487,25 @@ async def catalog_product(product_id: str):
     if item is None: raise HTTPException(status_code=404, detail="Product not found")
     return {k: v for k, v in item.items() if k != "image_path"}
 
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    static_file = (FRONTEND_DIST_DIR / full_path).resolve()
+    if (
+        FRONTEND_DIST_DIR.exists()
+        and static_file.is_file()
+        and str(static_file).startswith(str(FRONTEND_DIST_DIR.resolve()))
+    ):
+        return FileResponse(static_file)
+
+    api_prefixes = ("api", "auth", "chat", "image", "cart", "catalog", "journal", "conversations", "health", "images", "uploads", "socket.io", "assets")
+    if full_path.startswith(api_prefixes):
+        raise HTTPException(status_code=404, detail="Not found")
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Frontend build not found")
+
 # ── Socket.IO event handlers ──────────────────────────────────────────────────
 
 @sio.on("connect")
@@ -1519,9 +1544,14 @@ socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 if __name__ == "__main__":
     import argparse
     import uvicorn
+    cert_file = os.getenv("SSL_CERT_FILE", "/app/certs/selfsigned.crt")
+    key_file = os.getenv("SSL_KEY_FILE", "/app/certs/selfsigned.key")
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-reload", dest="reload", action="store_false",
                         help="Disable hot reload (used in production/Docker)")
     parser.set_defaults(reload=True)
     args = parser.parse_args()
-    uvicorn.run("api:socket_app", host="0.0.0.0", port=8000, reload=args.reload)
+    ssl_kwargs = {}
+    if Path(cert_file).exists() and Path(key_file).exists():
+        ssl_kwargs = {"ssl_certfile": cert_file, "ssl_keyfile": key_file}
+    uvicorn.run("api:socket_app", host="0.0.0.0", port=8000, reload=args.reload, **ssl_kwargs)
