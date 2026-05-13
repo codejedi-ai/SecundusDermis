@@ -117,6 +117,37 @@ function UiActionExecutor() {
   return null;
 }
 
+/**
+ * ShopSocketSync — applies shop_sync payloads from the agent so React shop state
+ * matches backend shop_state whenever manage_sidebar / keyword_search runs.
+ */
+function ShopSocketSync() {
+  const { lastShopSync, clearShopSync } = useSocket();
+  const { setGender, setCategory, setQuery, setInputValue } = useShop();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!lastShopSync) return;
+
+    if ('gender' in lastShopSync) setGender(lastShopSync.gender ?? '');
+    if ('category' in lastShopSync) setCategory(lastShopSync.category ?? '');
+    if ('query' in lastShopSync) {
+      const q = lastShopSync.query ?? '';
+      setInputValue(q);
+      setQuery(q);
+    }
+
+    const has =
+      !!(lastShopSync.gender?.trim() || lastShopSync.category?.trim() || lastShopSync.query?.trim());
+    if (has && location.pathname !== '/shop') navigate('/shop');
+
+    clearShopSync();
+  }, [lastShopSync]);
+
+  return null;
+}
+
 /** Floating chat is hidden on About — that page embeds the same widget inline. */
 function AppChatWidget() {
   const { pathname } = useLocation()
@@ -180,6 +211,7 @@ function App() {
         <Router>
           <MonitorProvider>
           <UiActionExecutor />
+          <ShopSocketSync />
           <ScrollToTop />
           <div className="app">
             <Header />

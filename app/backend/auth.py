@@ -10,8 +10,11 @@ import json
 import os
 import secrets
 import time
+import warnings
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+import config
 from pydantic import BaseModel
 
 
@@ -31,9 +34,33 @@ def _notion_users_active() -> bool:
         )
     return True
 
-_DATA_DIR = Path(
-    os.getenv("AUTH_DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))
-)
+
+def _paths_equal(a: Path, b: Path) -> bool:
+    ra, rb = a.resolve(), b.resolve()
+    if ra == rb:
+        return True
+    try:
+        return ra.samefile(rb)
+    except OSError:
+        return False
+
+
+_raw_auth = os.getenv("AUTH_DATA_DIR", "").strip()
+if not _raw_auth:
+    _DATA_DIR = config.DATA_DIR
+else:
+    _p = Path(_raw_auth).expanduser()
+    _candidate = _p.resolve() if _p.is_absolute() else (Path(__file__).resolve().parent / _p).resolve()
+    if _paths_equal(_candidate, config.DATA_DIR):
+        _DATA_DIR = config.DATA_DIR
+    else:
+        warnings.warn(
+            f"AUTH_DATA_DIR={_raw_auth!r} resolves to {_candidate}; "
+            f"using config.DATA_DIR ({config.DATA_DIR!r}) so auth files stay with app data.",
+            UserWarning,
+            stacklevel=1,
+        )
+        _DATA_DIR = config.DATA_DIR
 _USERS_FILE = _DATA_DIR / "auth_users.json"
 _SESSIONS_FILE = _DATA_DIR / "auth_sessions.json"
 _RESET_TOKENS_FILE = _DATA_DIR / "auth_reset_tokens.json"

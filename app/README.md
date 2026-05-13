@@ -16,7 +16,7 @@ From **`app/`**:
 
 ```bash
 cd app/backend
-cp .env.example .env   # once: set secrets and DATA_DIR (default uses ../data if unset)
+cp .env.example .env   # once: set secrets; omit DATA_DIR to use app/data automatically
 uv sync
 uv run python api.py   # http://localhost:8000
 ```

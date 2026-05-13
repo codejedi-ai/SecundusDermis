@@ -19,7 +19,6 @@ venv/
 env/
 
 # Data (Kaggle, Chroma, Journal, Diary)
-backend/data/
 data/
 
 # Database

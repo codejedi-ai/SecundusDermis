@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 import config
+from google.genai import types as genai_types
 
 log = logging.getLogger(__name__)
 

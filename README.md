@@ -16,18 +16,18 @@ The site is also designed as a target environment for external AI agents. Agents
 
 ## Configuration
 
-The important variable is **`DATA_DIR`** (where Kaggle data, Chroma, journal, and uploads live). Set it to an **absolute path** on your machine, for example `{repo}/app/data`, in `app/backend/.env` (and optionally the repo root `.env` or `app/.env`; duplicate keys in `app/backend/.env` win last).
+The important variable is **`DATA_DIR`**. **Only `app/data` is used** for Kaggle extract, Chroma, journal files on disk, uploads, and (by default) auth JSON. You may **omit** `DATA_DIR` in `app/backend/.env` and the app resolves to `{repo}/app/data`. If you set `DATA_DIR` or `AUTH_DATA_DIR`, they must resolve to **that same directory**; other paths are ignored with a warning. Optional: repo root `.env` and `app/.env` for shared keys — duplicate keys in `app/backend/.env` win last.
 
 | | **Local development** |
 |---|------------------------|
 | **Purpose** | `uv`, Vite, optional hot reload |
 | **Config** | `app/backend/.env` (and optionally repo root `.env` / `app/.env`; `app/backend/.env` wins last) |
-| **`DATA_DIR`** | **Absolute path**, e.g. `{repo}/app/data` |
+| **`DATA_DIR`** | **Always `app/data`** (omit env, or set to the resolved path of `{repo}/app/data` only) |
 | **Kaggle zip** | `{DATA_DIR}/kaggle/deep-fashion-multimodal.zip` |
 | **Start backend** | `cd app/backend && uv run python api.py` |
 | **Start frontend** | `cd app/frontend && npm run dev` (proxies `/api` → `:8000`) |
 
-After changing `DATA_DIR`, restart the backend process.
+After changing `.env` files or secrets, restart the backend process.
 
 ### Public URL (optional)
 
@@ -51,12 +51,12 @@ To test from outside your LAN, run [ngrok](https://ngrok.com/) (or similar) agai
 
 ```bash
 cd app/backend
-cp .env.example .env          # fill secrets; set DATA_DIR to an absolute path (see Configuration above)
+cp .env.example .env          # fill secrets; you can omit DATA_DIR (defaults to ../data → app/data)
 uv sync                       # install dependencies
 uv run python api.py          # starts on http://localhost:8000
 ```
 
-`api.py` loads env from the repo root `.env`, then `app/.env` if present, then `app/backend/.env` (**overrides**). Prefer defining `DATA_DIR` in `app/backend/.env`.
+`api.py` loads env from the repo root `.env`, then `app/.env` if present, then `app/backend/.env` (**overrides**). Prefer secrets in `app/backend/.env`; **only `app/data`** is used for catalog and auth files unless `DATA_DIR` / `AUTH_DATA_DIR` point at that same path.
 
 The DeepFashion Multimodal dataset (~650 MB) downloads on first run via the Kaggle API when the catalog is not ready under `{DATA_DIR}/kaggle/deep-fashion-multimodal/`. Interactive API docs at `http://localhost:8000/docs`.
 
@@ -75,9 +75,9 @@ The Vite dev server proxies `/api/*` → `localhost:8000`.
 Paths below **`DATA_DIR`** are derived in `app/backend/config.py` (do not set legacy `IMAGES_DIR` / `DATASET_ROOT` for the main API).
 
 ```env
-# app/backend/.env  —  use an ABSOLUTE DATA_DIR
+# app/backend/.env  —  omit DATA_DIR to use {repo}/app/data, or set both to that path only
 DATA_DIR=/absolute/path/to/SecundusDermis/app/data
-AUTH_DATA_DIR=/absolute/path/to/SecundusDermis/app/data   # optional; defaults next to api.py if unset
+AUTH_DATA_DIR=/absolute/path/to/SecundusDermis/app/data   # optional; must match DATA_DIR (app/data)
 
 GEMINI_API_KEY=...                               # required — LLM + VLM
 KAGGLE_API_TOKEN=KGAT_...                        # required — dataset download
@@ -161,7 +161,7 @@ The histogram only **orders** what keyword search already found — it never ret
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| **Agent framework** | Google ADK (`google-adk`) | Native Gemini tool-calling; `InMemorySessionService` maintains multi-turn context; `Runner` handles the full conversation loop with zero boilerplate |
+| **Agent framework** | Gemini SDK + `app/agent/stylist_loop` | Direct `generate_content` with function declarations; optional standalone agent service under `app/agent` calling the API over HTTP |
 | **LLM / VLM** | Gemini (`gemini-3.1-pro-preview-customtools`) | Function-calling for agent tools; same API key for both chat agent and image description — single dependency, single quota |
 | **Product search** | In-memory `str in str` keyword scan | 12k descriptions fit in RAM; sub-millisecond queries; zero API cost per search — ideal for a high-query demo |
 | **Image similarity** | 96-dim RGB histogram + cosine similarity | No model inference per query; computed once per image and cached lazily; sufficient colour-based visual ranking for a demo |

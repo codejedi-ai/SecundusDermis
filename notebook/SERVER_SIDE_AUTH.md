@@ -230,7 +230,7 @@ https://troll-certain-bream.ngrok-free.app
 ### 1. Start Backend
 
 ```bash
-cd /root/SecundusDermis/backend
+cd /root/SecundusDermis/app/backend
 source .venv/bin/activate
 uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```

@@ -6,23 +6,47 @@ Derives all data paths from a single source of truth.
 """
 
 import os
+import warnings
 from pathlib import Path
 
 # ── Base Data Directory ───────────────────────────────────────────────────────
-# Set DATA_DIR in backend/.env (local) or in your deployment environment.
-# Default when unset: sibling `../data` next to this package (i.e. app/data).
-# Recommended: absolute path to app/data, e.g. /path/to/SecundusDermis/app/data
-# Kaggle zip path: DATA_DIR/kaggle/deep-fashion-multimodal.zip
+# All runtime catalog + vector + journal-on-disk + uploads data lives under
+# **app/data/** (`../data` from this package). Optional `DATA_DIR` in env is
+# honored only when it resolves to that exact directory; otherwise it is ignored
+# with a warning so nothing writes outside the `app/` tree.
 #
-# If DATA_DIR is relative, it is resolved against this package directory (backend/), not cwd.
+# Kaggle zip path: DATA_DIR/kaggle/deep-fashion-multimodal.zip
 _APP_ROOT = Path(__file__).resolve().parent
-_APP_HOME = _APP_ROOT.parent
-_data_raw = os.getenv("DATA_DIR", "").strip()
-if not _data_raw:
-    DATA_DIR = (_APP_HOME / "data").resolve()
+_APP_HOME = _APP_ROOT.parent.resolve()
+APP_DATA_DIR = (_APP_HOME / "data").resolve()
+
+
+def _paths_equal(a: Path, b: Path) -> bool:
+    ra, rb = a.resolve(), b.resolve()
+    if ra == rb:
+        return True
+    try:
+        return ra.samefile(rb)
+    except OSError:
+        return False
+
+
+_req = os.getenv("DATA_DIR", "").strip()
+if not _req:
+    DATA_DIR = APP_DATA_DIR
 else:
-    _p = Path(_data_raw)
-    DATA_DIR = _p.resolve() if _p.is_absolute() else (_APP_ROOT / _p).resolve()
+    _p = Path(_req).expanduser()
+    _candidate = _p.resolve() if _p.is_absolute() else (_APP_ROOT / _p).resolve()
+    if _paths_equal(_candidate, APP_DATA_DIR):
+        DATA_DIR = APP_DATA_DIR
+    else:
+        warnings.warn(
+            f"DATA_DIR={_req!r} is not the canonical app data directory {APP_DATA_DIR!r}; "
+            "using app/data only.",
+            UserWarning,
+            stacklevel=1,
+        )
+        DATA_DIR = APP_DATA_DIR
 
 # ── Derived Subdirectories ────────────────────────────────────────────────────
 # Organized as requested: Kaggle, ChromaDB, Journal, and Uploads
@@ -45,6 +69,12 @@ MODEL          = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview-customtools")
 EMBED_MODEL    = "gemini-embedding-2-preview"
 EMBEDDING_DIM  = 3072
 THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
+
+# ── Standalone stylist agent (optional) ─────────────────────────────────────
+# When AGENT_SERVICE_URL is set, POST /chat/stream is proxied to that service.
+# The agent process uses AGENT_INTERNAL_SECRET + BACKEND_URL to call /internal/agent/* and push Socket.IO.
+AGENT_INTERNAL_SECRET = os.getenv("AGENT_INTERNAL_SECRET", "").strip()
+AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "").strip()
 
 # ── Email (Gmail SMTP, optional) ─────────────────────────────────────────────
 # Password reset links use this origin (no trailing slash).

@@ -20,7 +20,7 @@ Later starts
 
 ## Environment variables
 
-Set these in `app/backend/.env` (or your process environment), not only in a shell one-off — the API reads them at startup.
+Set these in `app/backend/.env` (or your process environment). **Only the directory `app/data`** is used: if `DATA_DIR` points elsewhere, it is ignored (see `app/backend/config.py`).
 
 ```env
 # Dataset slug: owner/name from kaggle.com/datasets/owner/name

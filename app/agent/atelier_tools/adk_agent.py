@@ -1,7 +1,8 @@
 """
-agent/agent.py
-==============
-Defines the Gemini ADK fashion agent.
+atelier_tools/adk_agent.py
+==========================
+Google ADK ``Agent`` factory for the Secundus Dermis atelier (optional / experimental).
+Uses tool functions from :mod:`atelier_tools.tools`.
 """
 
 from google.adk.agents import Agent

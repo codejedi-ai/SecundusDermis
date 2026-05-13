@@ -42,7 +42,7 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 | `AGENT_MODEL` | — | `gemini-3.1-pro-preview-customtools` (default) |
 | `VLM_MODEL` | — | `gemini-3.1-pro-preview` (default) |
 | `IMAGES_DIR` | — | `./data/selected_images` (default) |
-| `JOURNAL_DIR` | — | `./journal` (default) |
+| `JOURNAL_DIR` | — | Not used for overrides; posts live under `app/data/journal` (`*.json`) |
 
 ---
 
@@ -55,7 +55,7 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 │  /chat ────── Google ADK Runner ──── Gemini LLM          │
 │                     │                                    │
 │               search_by_keywords ←── in-memory catalog  │
-│               search_journal     ←── markdown files      │
+│               search_journal     ←── app/data/journal JSON │
 │               get_catalog_stats                          │
 │               get_product_categories                     │
 │                                                          │
@@ -63,7 +63,7 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 │                              └─ colour histogram re-rank │
 │                                                          │
 │  /catalog/*  ── pure in-memory filtering (zero API cost) │
-│  /journal/*  ── markdown files served as JSON            │
+│  /journal/*  ── JSON posts in app/data/journal           │
 │  /auth/*     ── in-memory session auth                   │
 │  /cart/*     ── in-memory cart per session               │
 └──────────────────────────────────────────────────────────┘
@@ -300,7 +300,6 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
     "google-genai>=1.0.0",
-    "google-adk>=0.4.0",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
     "kaggle>=1.6.0",

@@ -10,6 +10,7 @@
  *
  * Events the backend may push:
  *   ui_action   — agent controls the frontend UI
+ *   shop_sync   — canonical gender/category/query from agent shop_state
  *   notification — toast / alert message
  *   pong        — reply to a client ping
  *   connected   — room-join confirmation
@@ -23,7 +24,7 @@ import React, {
   useState,
 } from 'react';
 import { io, Socket } from 'socket.io-client';
-import type { UiAction } from '../services/chatApi';
+import type { ShopContextPayload, UiAction } from '../services/chatApi';
 
 // Strip /api suffix from VITE_API_URL to get the bare server origin.
 const RAW_API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
@@ -37,6 +38,9 @@ interface SocketContextType {
   lastUiAction: UiAction | null;
   /** Clear the last ui_action after it has been consumed. */
   clearUiAction: () => void;
+  /** Latest shop_state snapshot (gender, category, search bar) from the agent. */
+  lastShopSync: ShopContextPayload | null;
+  clearShopSync: () => void;
   /** Emit a custom event to the backend (for future bidirectional use). */
   emit: (event: string, data?: unknown) => void;
 }
@@ -45,6 +49,8 @@ const SocketContext = createContext<SocketContextType>({
   connected: false,
   lastUiAction: null,
   clearUiAction: () => {},
+  lastShopSync: null,
+  clearShopSync: () => {},
   emit: () => {},
 });
 
@@ -60,6 +66,7 @@ export function SocketProvider({
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [lastUiAction, setLastUiAction] = useState<UiAction | null>(null);
+  const [lastShopSync, setLastShopSync] = useState<ShopContextPayload | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -96,6 +103,11 @@ export function SocketProvider({
       setLastUiAction(action);
     });
 
+    socket.on('shop_sync', (payload: ShopContextPayload) => {
+      console.info('[socket] shop_sync received:', payload);
+      setLastShopSync(payload);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -107,9 +119,19 @@ export function SocketProvider({
   };
 
   const clearUiAction = () => setLastUiAction(null);
+  const clearShopSync = () => setLastShopSync(null);
 
   return (
-    <SocketContext.Provider value={{ connected, lastUiAction, clearUiAction, emit }}>
+    <SocketContext.Provider
+      value={{
+        connected,
+        lastUiAction,
+        clearUiAction,
+        lastShopSync,
+        clearShopSync,
+        emit,
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );

@@ -13,6 +13,13 @@ load_dotenv(_backend_dir.parent.parent / ".env")
 load_dotenv(_backend_dir.parent / ".env", override=False)
 load_dotenv(_backend_dir / ".env", override=True)
 
+import sys
+
+_agent_dir = (_backend_dir.parent / "agent").resolve()
+_agent_s = str(_agent_dir)
+if _agent_s not in sys.path:
+    sys.path.insert(0, _agent_s)
+
 import asyncio
 import csv
 import hashlib
@@ -26,17 +33,20 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Optional, AsyncGenerator
 
+import base64
+import httpx
 import numpy as np
 import socketio
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from google import genai
 from google.genai import types as genai_types
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+import config
 from auth import (
     UserCreate, UserLogin, UserResponse, LoginResponse, PasswordReset,
     RegisterResponse, VerifyEmailRequest, ProfileUpdate,
@@ -52,12 +62,15 @@ from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
 
-import config
 from smtp_mail import (
     gmail_smtp_configured,
     try_send_password_reset_email,
     try_send_verification_email,
 )
+
+from stylist_backend_bridge import InProcessStylistDeps
+from stylist_loop.stream_loop import StylistGeminiRuntime, gemini_chat_stream as stylist_react_stream
+from shop_tools import keyword_search as shop_keyword_search, manage_sidebar as shop_manage_sidebar
 
 # ── Socket.IO server ───────────────────────────────────────────────────────────
 
@@ -67,6 +80,7 @@ sio = socketio.AsyncServer(
     logger=False,
     engineio_logger=False,
 )
+
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -281,6 +295,13 @@ async def lifespan(app: FastAPI):
     get_vector_store()
     logger.info("Indexing journal for RAG …")
     index_journal()
+    try:
+        from atelier_tools.tools import init_tools as _init_atelier_tools
+
+        _init_atelier_tools(state.catalog, _load_journal(), state.gemini)
+        logger.info("Atelier toolkit initialised (ADK tools + describe_image client).")
+    except Exception as _atelier_exc:
+        logger.warning("Atelier toolkit init skipped: %s", _atelier_exc)
     logger.info(f"Ready. {len(state.catalog)} products. Using direct Gemini SDK.")
     yield
     logger.info("Shutting down.")
@@ -473,258 +494,8 @@ def regex_search_local(
 
 def keyword_search(keywords: str, gender: Optional[str] = None, category: Optional[str] = None, n_results: int = 8) -> list[dict]:
     """Search catalog by keywords - matches ANY word from the query."""
-    kw = keywords.lower().strip()
-    if not kw:
-        return []
-    
-    # Split into individual words for matching
-    search_terms = [t.strip() for t in re.split(r'[\s,]+', kw) if len(t.strip()) > 2]
-    
-    results = []
-    for item in state.catalog:
-        desc_lower = item.get("description", "").lower()
-        name_lower = item.get("product_name", "").lower()
-        cat_lower = item.get("category", "").lower()
-        
-        # Match if ANY search term is found in description, name, or category
-        if search_terms:
-            matches = any(term in desc_lower or term in name_lower or term in cat_lower for term in search_terms)
-            if not matches:
-                continue
-        
-        if gender and item.get("gender", "").upper() != gender.upper(): continue
-        if category and item.get("category", "") != category: continue
-        
-        results.append({k: v for k, v in item.items() if k != "image_path"})
-        if len(results) >= n_results: break
-    
-    return results
+    return shop_keyword_search(state.catalog, keywords, gender=gender, category=category, n_results=n_results)
 
-
-# ── Shop sidebar taxonomy (keep in sync with frontend/src/components/ShopSidebar.tsx) ─
-
-_SIDEBAR_GROUPS_MEN = [
-    {"label": "Tops", "cats": ["Tees_Tanks", "Shirts_Polos", "Sweaters", "Sweatshirts_Hoodies", "Suiting"]},
-    {"label": "Bottoms", "cats": ["Denim", "Pants", "Shorts"]},
-    {"label": "Layers", "cats": ["Jackets_Vests"]},
-]
-_SIDEBAR_GROUPS_WOMEN = [
-    {"label": "Tops", "cats": ["Tees_Tanks", "Graphic_Tees", "Blouses_Shirts", "Cardigans"]},
-    {"label": "Bottoms", "cats": ["Denim", "Pants", "Shorts", "Skirts", "Leggings"]},
-    {"label": "Dresses & Sets", "cats": ["Dresses", "Rompers_Jumpsuits"]},
-    {"label": "Layers", "cats": ["Jackets_Coats"]},
-]
-_SIDEBAR_GROUPS_ALL = [
-    {"label": "Tops", "cats": ["Tees_Tanks", "Graphic_Tees", "Blouses_Shirts", "Shirts_Polos", "Sweaters", "Sweatshirts_Hoodies", "Cardigans", "Suiting"]},
-    {"label": "Bottoms", "cats": ["Denim", "Pants", "Shorts", "Skirts", "Leggings"]},
-    {"label": "Dresses & Sets", "cats": ["Dresses", "Rompers_Jumpsuits"]},
-    {"label": "Layers", "cats": ["Jackets_Vests", "Jackets_Coats"]},
-]
-
-ALL_VALID_CATEGORIES = frozenset(
-    c for g in _SIDEBAR_GROUPS_ALL for c in g["cats"]
-)
-
-
-def _sidebar_groups_for_gender(gender: Optional[str]) -> list[dict]:
-    if gender == "MEN":
-        return _SIDEBAR_GROUPS_MEN
-    if gender == "WOMEN":
-        return _SIDEBAR_GROUPS_WOMEN
-    return _SIDEBAR_GROUPS_ALL
-
-
-def _normalize_gender_arg(raw: Optional[str]) -> Optional[str]:
-    if raw is None:
-        return None
-    u = str(raw).strip().upper()
-    if u in ("MEN", "MAN", "MENS", "MEN'S"):
-        return "MEN"
-    if u in ("WOMEN", "WOMAN", "WOMENS", "WOMEN'S"):
-        return "WOMEN"
-    return None
-
-
-def _normalize_category_arg(raw: Optional[str]) -> Optional[str]:
-    if raw is None:
-        return None
-    s = str(raw).strip().replace(" ", "_")
-    if not s:
-        return None
-    for c in ALL_VALID_CATEGORIES:
-        if c.lower() == s.lower():
-            return c
-    return None
-
-
-def build_sidebar_snapshot(shop_state: dict) -> dict[str, Any]:
-    """Full sidebar tree: every gender and category with selected / not selected (matches Shop UI)."""
-    g_sel = _normalize_gender_arg(shop_state.get("gender"))
-    c_sel = _normalize_category_arg(shop_state.get("category"))
-
-    genders = [
-        {"id": "MEN", "label": "Men", "selected": g_sel == "MEN"},
-        {"id": "WOMEN", "label": "Women", "selected": g_sel == "WOMEN"},
-    ]
-    groups_out: list[dict[str, Any]] = []
-    for grp in _sidebar_groups_for_gender(g_sel):
-        cats = [
-            {
-                "id": cid,
-                "label": cid.replace("_", " "),
-                "selected": c_sel == cid,
-            }
-            for cid in grp["cats"]
-        ]
-        groups_out.append({"label": grp["label"], "categories": cats})
-
-    sel_g_label = next((x["label"] for x in genders if x["selected"]), None)
-    sel_c_label = None
-    for grp in groups_out:
-        for cat in grp["categories"]:
-            if cat["selected"]:
-                sel_c_label = cat["label"]
-                break
-        if sel_c_label:
-            break
-
-    return {
-        "genders": genders,
-        "category_groups": groups_out,
-        "selected_gender_id": g_sel,
-        "selected_category_id": c_sel,
-        "narration": (
-            f"Currently selected: gender={sel_g_label or 'none (all)'}, category={sel_c_label or 'none'}."
-            " Every other option above is not selected."
-        ),
-    }
-
-
-def _apply_sidebar_selection(
-    shop_state: dict,
-    action: Optional[str],
-    args: dict[str, Any],
-) -> tuple[bool, str]:
-    """
-    Mutates shop_state keys gender, category. Returns (changed, reason_note).
-    """
-    if not action or str(action).strip().lower() not in ("select", "set"):
-        return False, ""
-
-    args = args or {}
-    changed = False
-    current_g = _normalize_gender_arg(shop_state.get("gender"))
-    current_c = _normalize_category_arg(shop_state.get("category"))
-
-    has_g = "gender" in args
-    has_c = "category" in args
-    legacy_value = args.get("value")
-
-    if has_g:
-        g_raw = args["gender"]
-        if g_raw is None or str(g_raw).strip().upper() in ("ALL", "NONE", ""):
-            if current_g is not None or current_c is not None:
-                changed = True
-            current_g = None
-            current_c = None
-        else:
-            ng = _normalize_gender_arg(str(g_raw))
-            if ng:
-                if current_g != ng:
-                    changed = True
-                current_g = ng
-                if not has_c:
-                    if current_c is not None:
-                        changed = True
-                    current_c = None
-
-    if has_c:
-        c_raw = args["category"]
-        if c_raw is None or str(c_raw).strip() == "":
-            if current_c is not None:
-                changed = True
-            current_c = None
-        else:
-            nc = _normalize_category_arg(str(c_raw))
-            if nc and current_c != nc:
-                changed = True
-                current_c = nc
-            elif nc is None:
-                pass
-
-    if not has_g and not has_c and legacy_value:
-        v = str(legacy_value).strip()
-        vu = v.upper()
-        if vu in ("MEN", "WOMEN"):
-            ng = vu
-            if current_g != ng or current_c is not None:
-                changed = True
-            current_g = ng
-            current_c = None
-        elif vu in ("ALL", "NONE"):
-            if current_g is not None or current_c is not None:
-                changed = True
-            current_g = None
-            current_c = None
-        else:
-            nc = _normalize_category_arg(v)
-            if nc and current_c != nc:
-                changed = True
-                current_c = nc
-
-    shop_state["gender"] = current_g
-    shop_state["category"] = current_c
-    return changed, "sidebar_updated" if changed else ""
-
-
-def manage_sidebar(
-    action: Optional[str] = None,
-    value: Optional[str] = None,
-    gender: Optional[str] = None,
-    category: Optional[str] = None,
-    shop_state: Optional[dict] = None,
-) -> dict[str, Any]:
-    """
-    Observe or update the shop sidebar (gender + secondary category), aligned with the React sidebar.
-    Pass shop_state dict (mutable); receives full tree with selected / unselected for every option.
-    """
-    if shop_state is None:
-        shop_state = {}
-
-    args: dict[str, Any] = {}
-    if gender is not None:
-        args["gender"] = gender
-    if category is not None:
-        args["category"] = category
-    if value is not None:
-        args["value"] = value
-
-    act = (action or "").strip().lower() if action else ""
-    if act in ("", "observe", "peek", "read", "list"):
-        snap = build_sidebar_snapshot(shop_state)
-        return {
-            "mode": "observe",
-            "shop_sidebar": snap,
-            "ui_action_required": False,
-            "action_payload": None,
-            "status": "Observation: full sidebar (all options with selected flags).",
-        }
-
-    changed, _ = _apply_sidebar_selection(shop_state, action, args)
-    snap = build_sidebar_snapshot(shop_state)
-
-    payload = {
-        "gender": shop_state.get("gender") or "",
-        "category": shop_state.get("category") or "",
-    }
-
-    return {
-        "mode": "select",
-        "shop_sidebar": snap,
-        "ui_action_required": changed,
-        "action_payload": payload if changed else None,
-        "status": "Sidebar updated." if changed else "No change (values already active).",
-    }
 
 # ── VLA Chat ──────────────────────────────────────────────────────────────────
 
@@ -790,328 +561,131 @@ async def gemini_chat_stream(
     shop_context: Optional[ShopContext] = None,
 ) -> AsyncGenerator[dict, None]:
     """
-    Agentic ReAct loop for Secundus Dermis.
-    Iterates Thought -> Action -> Observation until a final answer is reached.
+    Agentic ReAct loop for Secundus Dermis (delegates to ``app/agent/stylist_loop`` with in-process catalog/RAG/socket).
     """
-    logger.info(f"[AGENT LOOP] Start: {message[:80]}... image={image_bytes is not None}")
-    yield {"type": "thinking_start", "content": "Initializing agentic workflow..."}
-
-    shop_state: dict[str, Any] = {"gender": None, "category": None, "query": None}
-    if shop_context is not None:
-        dumped = shop_context.model_dump() if hasattr(shop_context, "model_dump") else {}
-        shop_state["gender"] = dumped.get("gender") or None
-        shop_state["category"] = dumped.get("category") or None
-        shop_state["query"] = dumped.get("query") or None
-        if isinstance(shop_state["gender"], str) and not shop_state["gender"].strip():
-            shop_state["gender"] = None
-        if isinstance(shop_state["category"], str) and not shop_state["category"].strip():
-            shop_state["category"] = None
-
-    # ── Setup Vector RAG & UI context ─────────────────────────────────────────
-    vs = get_vector_store()
-    rag_context = ""
     try:
-        embed_contents = [message]
-        if image_bytes:
-            embed_contents = [genai_types.Content(parts=[
-                genai_types.Part(text=message),
-                genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-            ])]
+        from agent_prompts import merge_prompts_with_soul
+    except ImportError:
+        merge_prompts_with_soul = lambda p: dict(p)
 
-        res = state.gemini.models.embed_content(
-            model=config.EMBED_MODEL,
-            contents=embed_contents,
-            config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
-        )
-        query_embedding = res.embeddings[0].values
-        
-        # Memory & RAG hits
-        vs.add_query_embedding(message, query_embedding, session_id=ws_session_id or "default")
-        
-        journal_hits = vs.search_journal(query_embedding, limit=2)
-        if journal_hits:
-            rag_context += "\n\n## Journal Context\n" + "\n".join([f"- {h['metadata']['title']}: {h['metadata']['excerpt']}" for h in journal_hits])
-            
-        img_memory = vs.search_images_by_similarity(query_embedding, limit=2)
-        if img_memory:
-            rag_context += "\n\n## Visual Memory\n" + "\n".join([f"- Past visual: {h['metadata']['description']}" for h in img_memory])
-
-    except Exception as e:
-        logger.warning(f"Initial RAG failed: {e}")
-
-    # ── Define Agent Tools ────────────────────────────────────────────────────
-    tool_decls = [
-        genai_types.FunctionDeclaration(
-            name="keyword_search",
-            description=(
-                "Search the catalog. Current sidebar gender/category are applied automatically if you omit them; "
-                "you may override per call. After manage_sidebar, pass the same gender/category here for consistent results."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "keywords": {"type": "string", "description": "Search terms"},
-                    "gender": {"type": "string", "description": "Optional override: MEN or WOMEN"},
-                    "category": {"type": "string", "description": "Optional override: category id e.g. Dresses, Denim"},
-                    "n_results": {"type": "integer", "description": "Max hits (default 8)"},
-                },
-                "required": ["keywords"]
-            }
-        ),
-        genai_types.FunctionDeclaration(
-            name="manage_sidebar",
-            description=(
-                "Observe or sync the shop sidebar with the patron. The tool returns EVERY gender and category "
-                "with selected true/false. When the patron names a department (e.g. women's dresses, men's denim), "
-                "call action='select' with BOTH gender (MEN or WOMEN) AND category (exact id e.g. Dresses, Denim, Tees_Tanks) "
-                "in one call when possible so primary and secondary filters match the UI. Use action empty or 'observe' to read state only. "
-                "Category ids use underscores as in the snapshot (e.g. Graphic_Tees, Jackets_Coats)."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "description": "Omit or 'observe' to read the full tree. 'select' to apply filters.",
-                    },
-                    "gender": {
-                        "type": "string",
-                        "description": "MEN, WOMEN, or ALL to clear gender (and reset category).",
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Catalog category id matching the sidebar (e.g. Dresses, Denim, Tees_Tanks).",
-                    },
-                    "value": {
-                        "type": "string",
-                        "description": "Legacy single tag: MEN, WOMEN, ALL, or a category id — prefer gender+category instead.",
-                    },
-                },
-            },
-        ),
-        genai_types.FunctionDeclaration(
-            name="show_product",
-            description="Explicitly display a specific product to the patron in the chat.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "product_id": {"type": "string", "description": "The ID of the product to show"}
-                },
-                "required": ["product_id"]
-            }
-        )
-    ]
-
-    # Initialize chat session history
-    sys_prompt = state.prompts.get("system_stylist", "")
-    _side_snap = build_sidebar_snapshot(shop_state)
-    _sidebar_json = json.dumps(_side_snap, indent=2)
-    _query_note = ""
-    if shop_state.get("query"):
-        _query_note = f'\n\n## Patron search bar (read-only for you)\n"{shop_state["query"]}"'
-    history = [
-        genai_types.Content(role="user", parts=[
-            genai_types.Part(text=(
-                f"{sys_prompt}\n\n"
-                f"## Shop sidebar — all choices; each has selected true or false\n{_sidebar_json}"
-                f"{_query_note}\n\n"
-                f"## Background Context\n{rag_context}\n\n"
-                f"Patron Request: {message}"
-            ))
-        ])
-    ]
-    if image_bytes:
-        history[0].parts.append(genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
-
-    gen_config = genai_types.GenerateContentConfig(
-        thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
-        temperature=1.0,
-        tools=[genai_types.Tool(function_declarations=tool_decls)]
+    deps = InProcessStylistDeps(sio, state)
+    rt = StylistGeminiRuntime(
+        gemini_client=state.gemini,
+        model=config.MODEL,
+        thinking_level=config.THINKING_LEVEL,
     )
+    _prompts = merge_prompts_with_soul(dict(state.prompts))
+    async for ev in stylist_react_stream(
+        message,
+        image_bytes,
+        mime_type,
+        ws_session_id,
+        shop_context,
+        rt=rt,
+        prompts=_prompts,
+        deps=deps,
+    ):
+        yield ev
 
-    # ── Run the ReAct Loop ──────────────────────────────────────────────────
-    max_iterations = 5
-    iteration = 0
-    final_prose = ""
-    discovered_products = []
-    seen_pids = set()
-    
-    while iteration < max_iterations:
-        iteration += 1
-        logger.info(f"[AGENT LOOP] Iteration {iteration}")
-        
+
+def verify_agent_secret(x_agent_secret: Optional[str] = Header(default=None, alias="X-Agent-Secret")) -> None:
+    if not config.AGENT_INTERNAL_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Agent internal API is not configured (AGENT_INTERNAL_SECRET).",
+        )
+    if (x_agent_secret or "").strip() != config.AGENT_INTERNAL_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid agent secret.")
+    return None
+
+
+class AgentKeywordSearchBody(BaseModel):
+    keywords: str
+    gender: Optional[str] = None
+    category: Optional[str] = None
+    n_results: int = 8
+
+
+class AgentManageSidebarBody(BaseModel):
+    shop_state: dict[str, Any]
+    action: Optional[str] = None
+    value: Optional[str] = None
+    gender: Optional[str] = None
+    category: Optional[str] = None
+
+
+class AgentRagBody(BaseModel):
+    message: str
+    session_id: str = "default"
+    image_base64: Optional[str] = None
+    mime_type: str = "image/jpeg"
+
+
+class AgentShowProductBody(BaseModel):
+    product_id: str
+
+
+class AgentEmitBody(BaseModel):
+    session_id: str
+    event: str
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/internal/agent/keyword-search")
+async def internal_agent_keyword_search(
+    body: AgentKeywordSearchBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    return {"products": keyword_search(body.keywords, body.gender, body.category, body.n_results)}
+
+
+@app.post("/internal/agent/manage-sidebar")
+async def internal_agent_manage_sidebar(
+    body: AgentManageSidebarBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    shop = dict(body.shop_state)
+    obs = shop_manage_sidebar(body.action, body.value, body.gender, body.category, shop_state=shop)
+    return {"observation": obs, "shop_state": shop}
+
+
+@app.post("/internal/agent/show-product")
+async def internal_agent_show_product(
+    body: AgentShowProductBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    item = next((p for p in state.catalog if p["product_id"] == body.product_id), None)
+    if not item:
+        return {"product": None}
+    return {"product": {k: v for k, v in item.items() if k != "image_path"}}
+
+
+@app.post("/internal/agent/rag-context")
+async def internal_agent_rag_context(
+    body: AgentRagBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    img_bytes = None
+    if body.image_base64:
         try:
-            response = state.gemini.models.generate_content(
-                model=config.MODEL,
-                contents=history,
-                config=gen_config
-            )
-            
-            if not response.candidates[0].content.parts:
-                break
-                
-            # Capture any thought/text from the model
-            current_text = ""
-            for part in response.candidates[0].content.parts:
-                if part.text:
-                    current_text += part.text
-            
-            if current_text:
-                yield {"type": "thinking", "content": f"Stylist is reasoning: {current_text[:100]}..."}
-            
-            history.append(response.candidates[0].content)
-            
-            # Check for tool calls
-            tool_calls = [p.function_call for p in response.candidates[0].content.parts if p.function_call]
-            
-            if not tool_calls:
-                # No more tools -> this is the Final Answer
-                final_prose = current_text
-                break
-            
-            # Execute tools and collect results
-            tool_responses = []
-            for fc in tool_calls:
-                yield {"type": "thinking", "content": f"Action: {fc.name}..."}
-                
-                observation = {}
-                if fc.name == "manage_sidebar":
-                    args = fc.args or {}
-                    observation = manage_sidebar(
-                        args.get("action"),
-                        args.get("value"),
-                        args.get("gender"),
-                        args.get("category"),
-                        shop_state=shop_state,
-                    )
+            img_bytes = base64.b64decode(body.image_base64)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid image_base64")
+    deps = InProcessStylistDeps(sio, state)
+    rag = await deps.build_initial_rag_context(body.message, img_bytes, body.mime_type, body.session_id)
+    return {"rag_context": rag}
 
-                    if observation.get("ui_action_required"):
-                        payload = observation["action_payload"] or {}
-                        await sio.emit("ui_action", {
-                            "action": "select_category",
-                            "payload": payload,
-                            "description": f"Agent sidebar: gender={payload.get('gender')!r} category={payload.get('category')!r}",
-                        }, room=f"sd_{ws_session_id}")
 
-                        hint = ", ".join(
-                            f"{k}={payload.get(k)!r}" for k in ("gender", "category") if payload.get(k)
-                        )
-                        yield {"type": "text", "content": f"*[Agent aligns shop sidebar: {hint}]*\n\n"}
-
-                        g_f = payload.get("gender") or None
-                        c_f = payload.get("category") or None
-                        search_val = c_f or g_f or args.get("value") or "fashion"
-                        res = keyword_search(keywords=str(search_val), gender=g_f, category=c_f)
-                        for p in res:
-                            if p["product_id"] not in seen_pids:
-                                discovered_products.append(p)
-                                seen_pids.add(p["product_id"])
-
-                        observation["status"] = f"UI updated. Found {len(res)} items."
-
-                elif fc.name == "keyword_search":
-                    kw = fc.args.get("keywords", "")
-                    ks_args = {k: fc.args[k] for k in ("keywords", "gender", "category", "n_results") if k in (fc.args or {})}
-                    if ks_args.get("gender") in (None, "") and shop_state.get("gender"):
-                        ks_args["gender"] = shop_state["gender"]
-                    if ks_args.get("category") in (None, "") and shop_state.get("category"):
-                        ks_args["category"] = shop_state["category"]
-
-                    # Push UI update: type into the search bar for the patron
-                    if ws_session_id and kw:
-                        await sio.emit("ui_action", {
-                            "action": "set_search_hint",
-                            "payload": {"query": kw},
-                            "description": f"Agent searching for: {kw}"
-                        }, room=f"sd_{ws_session_id}")
-                        
-                        yield {"type": "text", "content": f"*[Agent searches for: \"{kw}\"]*\n\n"}
-
-                    res = keyword_search(**ks_args)
-                    for p in res:
-                        if p["product_id"] not in seen_pids:
-                            discovered_products.append(p)
-                            seen_pids.add(p["product_id"])
-                    observation = {"results_count": len(res), "status": f"Search for '{kw}' complete."}
-                
-                elif fc.name == "show_product":
-                    pid = fc.args["product_id"]
-                    item = next((p for p in state.catalog if p["product_id"] == pid), None)
-                    if item:
-                        if pid not in seen_pids:
-                            discovered_products.append({k: v for k, v in item.items() if k != "image_path"})
-                            seen_pids.add(pid)
-                        yield {
-                            "type": "found_products", 
-                            "count": 1, 
-                            "content": f"Stylist presents: {item['product_name']}",
-                            "products": [{k: v for k, v in item.items() if k != "image_path"}]
-                        }
-                        observation = {"status": f"Product {pid} shown.", "product_name": item["product_name"]}
-                    else:
-                        observation = {"status": "Error: Product not found."}
-                
-                tool_responses.append(genai_types.Part.from_function_response(
-                    name=fc.name,
-                    response=observation
-                ))
-                yield {"type": "thinking", "content": f"Observation: {observation.get('status', 'Task complete')}"}
-
-            history.append(genai_types.Content(role="user", parts=tool_responses))
-            
-        except Exception as loop_err:
-            logger.error(f"[AGENT LOOP] Error in iteration {iteration}: {loop_err}")
-            break
-
-    # ── Step 3: Final Delivery ─────────────────────────────────────────────
-    yield {"type": "thinking", "content": "Curation complete. Composing final response..."}
-    
-    # Fallback: if agent didn't discover any products, try a broad search based on the message
-    if not discovered_products:
-        logger.info("[AGENT LOOP] No products discovered, triggering fallback search")
-        res = keyword_search(keywords=message, n_results=8)
-        for p in res:
-            if p["product_id"] not in seen_pids:
-                discovered_products.append(p)
-                seen_pids.add(p["product_id"])
-
-    if not final_prose:
-        final_prose = "I've curated a selection of pieces that I believe will complement your style perfectly. Please take a look at the choices below."
-    # (Existing gender detection logic preserved)
-    image_gender = None
-    if image_bytes and final_prose:
-        first_line, _, rest = final_prose.partition("\n")
-        if "GENDER:" in first_line:
-            image_gender = first_line.strip().replace("GENDER:", "").upper()
-            final_prose = rest.strip()
-
-    yield {"type": "tool_result", "tool": "gemini_narrative", "content": "Stylist curation complete"}
-    
-    # Push final results to UI
-    if ws_session_id:
-        room = f"sd_{ws_session_id}"
-        await sio.emit("catalog_results", {"products": discovered_products[:12], "mode": "agent_curated"}, room=room)
-
-    # Yield the final prose part by part (or all at once for simplicity in ReAct)
-    yield {"type": "text", "content": final_prose}
-    
-    # Final consolidated message for UI cards
-    _filt: dict[str, Any] = {
-        "gender": shop_state.get("gender") or "",
-        "category": shop_state.get("category") or "",
-    }
-    if shop_state.get("query"):
-        _filt["query"] = shop_state["query"]
-
-    yield {
-        "type": "final",
-        "reply": final_prose,
-        "products": discovered_products[:12],
-        "intent": "agent_curation",
-        "filter": _filt,
-    }
-    
-    yield "data: [DONE]\n\n"
+@app.post("/internal/agent/emit")
+async def internal_agent_emit(
+    body: AgentEmitBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    if not body.session_id or not body.event:
+        raise HTTPException(status_code=400, detail="session_id and event required")
+    room = f"sd_{body.session_id}"
+    await sio.emit(body.event, body.data, room=room)
+    return {"ok": True}
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -1124,7 +698,12 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "catalog_size": len(state.catalog), "search_mode": "keyword + VLM"}
+    return {
+        "status": "healthy",
+        "catalog_size": len(state.catalog),
+        "search_mode": "keyword + VLM",
+        "agent_proxy": bool(config.AGENT_SERVICE_URL),
+    }
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -1152,17 +731,61 @@ async def chat_stream(request: ChatRequest):
                 image_bytes = candidate.read_bytes()
                 mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
                 break
-    
+
+    if config.AGENT_SERVICE_URL:
+        if not config.AGENT_INTERNAL_SECRET:
+            raise HTTPException(
+                status_code=503,
+                detail="AGENT_SERVICE_URL is set but AGENT_INTERNAL_SECRET is missing.",
+            )
+        payload = {
+            "message": request.message,
+            "session_id": request.session_id,
+            "shop_context": request.shop_context.model_dump() if request.shop_context else None,
+            "mime_type": mime_type,
+            "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else None,
+            "prompts": state.prompts,
+        }
+        agent_base = config.AGENT_SERVICE_URL.rstrip("/")
+        headers = {"X-Agent-Secret": config.AGENT_INTERNAL_SECRET, "Accept": "text/event-stream"}
+
+        async def proxy_gen():
+            timeout = httpx.Timeout(600.0, read=600.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{agent_base}/v1/chat/stream",
+                    json=payload,
+                    headers=headers,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+
+        return StreamingResponse(
+            proxy_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
     async def generate():
-        async for event in gemini_chat_stream(request.message, image_bytes, mime_type,
-                                              ws_session_id=request.session_id,
-                                              shop_context=request.shop_context):
+        async for event in gemini_chat_stream(
+            request.message,
+            image_bytes,
+            mime_type,
+            ws_session_id=request.session_id,
+            shop_context=request.shop_context,
+        ):
             if event == "data: [DONE]\n\n":
                 yield event
             else:
                 yield f"data: {json.dumps(event)}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 @app.post("/image/upload", response_model=ImageUploadResponse)
 async def upload_image_for_agent(file: UploadFile = File(...)):
@@ -1525,7 +1148,7 @@ async def spa_fallback(full_path: str):
     ):
         return FileResponse(static_file)
 
-    api_prefixes = ("api", "auth", "chat", "image", "cart", "catalog", "journal", "conversations", "health", "images", "uploads", "socket.io", "assets")
+    api_prefixes = ("api", "auth", "chat", "image", "cart", "catalog", "journal", "conversations", "health", "images", "uploads", "socket.io", "assets", "internal")
     if full_path.startswith(api_prefixes):
         raise HTTPException(status_code=404, detail="Not found")
     index_file = FRONTEND_DIST_DIR / "index.html"
@@ -1536,8 +1159,14 @@ async def spa_fallback(full_path: str):
 # ── Socket.IO event handlers ──────────────────────────────────────────────────
 
 @sio.on("connect")
-async def on_connect(sid, environ):
-    logger.info(f"[SOCKETIO] Client connected: {sid}")
+async def on_connect(sid, environ, auth=None):
+    role = "patron"
+    if config.AGENT_INTERNAL_SECRET and isinstance(auth, dict) and auth.get("agent_secret") == config.AGENT_INTERNAL_SECRET:
+        role = "agent"
+        logger.info("[SOCKETIO] Agent service connected: %s", sid)
+    else:
+        logger.info("[SOCKETIO] Client connected: %s", sid)
+    await sio.save_session(sid, {"role": role})
 
 
 @sio.on("disconnect")
@@ -1559,6 +1188,27 @@ async def on_join_session(sid, data):
 @sio.on("ping")
 async def on_ping(sid, data):
     await sio.emit("pong", {}, to=sid)
+
+
+@sio.on("agent_emit")
+async def on_agent_emit(sid, data):
+    """Trusted agent process pushes events into a patron session room (e.g. shop_sync, catalog_results)."""
+    try:
+        sess = await sio.get_session(sid)
+    except Exception:
+        sess = {}
+    if not sess or sess.get("role") != "agent":
+        logger.warning("[SOCKETIO] agent_emit rejected for sid=%s", sid)
+        return
+    payload = data or {}
+    session_id = (payload.get("session_id") or "").strip()
+    event = (payload.get("event") or "").strip()
+    body = payload.get("data")
+    if not session_id or not event:
+        return
+    if not isinstance(body, dict):
+        body = {}
+    await sio.emit(event, body, room=f"sd_{session_id}")
 
 
 # ── Wrap FastAPI with Socket.IO ───────────────────────────────────────────────
