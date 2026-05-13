@@ -16,7 +16,7 @@ FastAPI server powering an AI-driven fashion storefront. Handles conversational 
 ### Installation
 
 ```bash
-cd backend
+cd app/backend
 cp .env.example .env
 # Edit .env and add your GEMINI_API_KEY and KAGGLE_API_TOKEN
 
@@ -250,15 +250,6 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-### Docker
-
-```bash
-docker build -t secundus-dermis-backend .
-docker run -p 8000:8000 --env-file .env secundus-dermis-backend
-```
-
----
-
 ## Production Deployment
 
 ### Railway
@@ -274,52 +265,28 @@ Set environment variables in Railway dashboard:
 - `KAGGLE_API_TOKEN`
 - `ADMIN_KEY`
 
-### Docker Compose
-
-```yaml
-services:
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - journal_data:/app/journal
-      - image_data:/app/data/selected_images
-
-volumes:
-  journal_data:
-  image_data:
-```
-
----
-
 ## Project Structure
 
 ```
-backend/
+app/backend/   (this directory — run api.py from here with uv)
 ├── api.py                      # Main FastAPI app
 ├── download_data.py            # Kaggle dataset download
-├── auth.py                     # In-memory auth
-├── cart.py                     # In-memory cart
-├── conversations.py            # In-memory conversations
+├── auth.py                     # Session auth
+├── cart.py                     # Cart
+├── conversations.py            # Conversations
 ├── pyproject.toml              # Dependencies (uv)
 ├── .env.example                # Environment template
-│
 ├── agent/
-│   ├── agent.py                # ADK Agent + persona
-│   └── tools.py                # Agent tool functions
-│
-├── journal/                    # Markdown articles
-│   ├── style/
-│   ├── trends/
-│   └── ...
-│
-└── data/                       # Downloaded dataset (gitignored)
-    ├── labels_front.csv
-    └── selected_images/
+│   ├── agent.py
+│   └── tools.py
+├── journal/                    # Editorial JSON / assets (see DATA_DIR too)
+├── migrations/
+├── public/                     # Static files served by the API
+├── templates/email/            # SMTP HTML templates
+└── …                           # notion_users, vector_store, smtp_mail, etc.
 ```
+
+Shared runtime data lives in `app/data/` (see `DATA_DIR`). The Vite app is in `app/frontend/`; production build output is `app/dist/` (see `../run.sh` or `npm run build`).
 
 ---
 

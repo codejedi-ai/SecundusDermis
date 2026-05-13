@@ -381,39 +381,6 @@ export default defineConfig({
 })
 ```
 
-### Docker
-
-```dockerfile
-# Build stage
-FROM node:20-slim AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-# Runtime stage
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-```
-
-### Netlify
-
-**File:** `netlify.toml`
-
-```toml
-[build]
-  publish = "dist"
-  command = "npm run build"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-```
-
 ### Nginx (Production)
 
 **File:** `nginx.conf`
@@ -432,16 +399,31 @@ server {
 
     # Proxy API to backend
     location /api/ {
-        proxy_pass http://backend:8000/;
+        proxy_pass http://127.0.0.1:8000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     # Proxy images to backend
     location /images/ {
-        proxy_pass http://backend:8000/images/;
+        proxy_pass http://127.0.0.1:8000/images/;
     }
 }
+```
+
+### Netlify
+
+**File:** `netlify.toml`
+
+```toml
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 ```
 
 ---
@@ -483,7 +465,6 @@ frontend/
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json
-├── Dockerfile
 ├── nginx.conf
 ├── netlify.toml
 │

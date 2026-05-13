@@ -9,9 +9,9 @@ color histograms (PIL/numpy) — zero Gemini API calls.
 Re-running is safe — skips if the DB is already populated.
 Use --force to rebuild from scratch.
 
-Dataset:
-  backend/data/selected_images/   — JPEG images
-  backend/data/labels_front.csv   — columns: image_id, caption, path,
+Dataset (under DATA_DIR; default when unset is the `data/` directory next to `backend/`):
+  data/kaggle/deep-fashion-multimodal/selected_images/   — JPEG images
+  data/kaggle/deep-fashion-multimodal/labels_front.csv   — columns: image_id, caption, path,
                                     gender, product_type, product_id,
                                     image_type
 """

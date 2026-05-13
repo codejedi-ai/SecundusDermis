@@ -138,29 +138,17 @@ services:
 
 ## Step-by-step: Backend on Fly.io
 
-Fly.io lets you run a persistent VM, which is ideal for this use case.
+Fly.io can run the API on a VM with your chosen build path. This repository does not check in deploy manifests; use Fly’s [buildpacks](https://fly.io/docs/reference/builders/) or add your own packaging in a fork.
 
-Create `backend/Dockerfile`:
-```dockerfile
-FROM python:3.13-slim
-
-WORKDIR /app
-COPY . .
-
-RUN pip install uv && uv sync
-
-EXPOSE 8000
-CMD ["uv", "run", "python", "api.py"]
-```
-
-Then:
 ```bash
-cd backend
+cd app/backend
 fly launch          # creates fly.toml
 fly secrets set GEMINI_API_KEY=your_key
 fly secrets set GOOGLE_API_KEY=your_key
 fly deploy
 ```
+
+Ensure `DATA_DIR` (or a persistent disk path on the host) is set in Fly secrets or `fly.toml` so downloads and Chroma survive restarts.
 
 ---
 

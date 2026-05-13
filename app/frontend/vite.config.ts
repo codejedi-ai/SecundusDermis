@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    // Write build output directly where backend serves static SPA files.
-    outDir: '../backend/frontend_dist',
+    // Production bundle: `app/dist` (FastAPI serves this when you run ./run.sh prod).
+    outDir: '../dist',
     emptyOutDir: true,
   },
   server: {

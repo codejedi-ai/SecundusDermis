@@ -23,7 +23,7 @@ def _notion_users_active() -> bool:
     mode = os.getenv("AUTH_USERS_BACKEND", "file").lower()
     if mode not in ("notion", "notion_users"):
         return False
-    from . import notion_users as _nu
+    import notion_users as _nu
 
     if not _nu.is_configured():
         raise RuntimeError(
@@ -31,7 +31,9 @@ def _notion_users_active() -> bool:
         )
     return True
 
-_DATA_DIR = Path(os.getenv("AUTH_DATA_DIR", Path(__file__).parent / "data"))
+_DATA_DIR = Path(
+    os.getenv("AUTH_DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))
+)
 _USERS_FILE = _DATA_DIR / "auth_users.json"
 _SESSIONS_FILE = _DATA_DIR / "auth_sessions.json"
 _RESET_TOKENS_FILE = _DATA_DIR / "auth_reset_tokens.json"
@@ -159,7 +161,7 @@ def create_user(email: str, password: str, name: Optional[str] = None) -> Option
     email = email.lower().strip()
     display_name = name or email.split("@")[0]
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         if nu.get_user_record(email):
             return None
@@ -198,7 +200,7 @@ def try_authenticate(
     """
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         user = nu.get_user_record(email)
         if not user or user["password_hash"] != _hash_password(password):
@@ -242,7 +244,7 @@ def verify_email_token(token: str) -> bool:
         return False
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         if not nu.get_user_record(email):
             return False
@@ -266,7 +268,7 @@ def resend_verification_token(email: str) -> Optional[str]:
     """
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         user = nu.get_user_record(email)
         if not user:
@@ -290,7 +292,7 @@ def get_user_from_session(session_id: str) -> Optional[UserResponse]:
         return None
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         user = nu.get_user_record(email)
         if not user:
@@ -317,7 +319,7 @@ def get_user_by_email(email: str) -> Optional[UserResponse]:
     """Get user profile by email."""
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         user = nu.get_user_record(email)
         if not user:
@@ -338,7 +340,7 @@ def create_reset_token(email: str) -> Optional[str]:
     """
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         if not nu.get_user_record(email):
             return None
@@ -393,7 +395,7 @@ def reset_password(token: str, new_password: str) -> bool:
         return False
 
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         if not nu.update_password_hash_for_email(email, _hash_password(new_password)):
             return False
@@ -425,7 +427,7 @@ def update_user_profile(email: str, name: Optional[str] = None) -> Optional[User
     """
     email = email.lower().strip()
     if _notion_users_active():
-        from . import notion_users as nu
+        import notion_users as nu
 
         if not nu.get_user_record(email):
             return None

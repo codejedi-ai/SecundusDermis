@@ -9,8 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 _backend_dir = Path(__file__).resolve().parent
-load_dotenv(_backend_dir.parent / ".env")
-load_dotenv(_backend_dir / ".env", override=False)
+load_dotenv(_backend_dir.parent.parent / ".env")
+load_dotenv(_backend_dir.parent / ".env", override=False)
+load_dotenv(_backend_dir / ".env", override=True)
 
 import asyncio
 import csv
@@ -309,7 +310,8 @@ class StripApiPrefixMiddleware:
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
-FRONTEND_DIST_DIR = Path(__file__).resolve().parent / "frontend_dist"
+# Built SPA lives at ../dist/ (sibling of frontend/). FastAPI mounts app/dist when present.
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
 BACKEND_PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 if FRONTEND_DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="frontend_assets")
@@ -1573,7 +1575,7 @@ if __name__ == "__main__":
     key_file = os.getenv("SSL_KEY_FILE", "/app/certs/selfsigned.key")
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-reload", dest="reload", action="store_false",
-                        help="Disable hot reload (used in production/Docker)")
+                        help="Disable hot reload (used in production)")
     parser.set_defaults(reload=True)
     args = parser.parse_args()
     ssl_kwargs = {}

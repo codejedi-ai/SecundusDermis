@@ -9,16 +9,20 @@ import os
 from pathlib import Path
 
 # ── Base Data Directory ───────────────────────────────────────────────────────
-# Set DATA_DIR in backend/.env (local) or docker-compose environment (containers).
-# Recommended local: absolute path to backend/data, e.g. /path/to/SecundusDermis/backend/data
-# Docker: use /app/data and mount a volume there.
+# Set DATA_DIR in backend/.env (local) or in your deployment environment.
+# Default when unset: sibling `../data` next to this package (i.e. app/data).
+# Recommended: absolute path to app/data, e.g. /path/to/SecundusDermis/app/data
 # Kaggle zip path: DATA_DIR/kaggle/deep-fashion-multimodal.zip
 #
 # If DATA_DIR is relative, it is resolved against this package directory (backend/), not cwd.
-_BACKEND_ROOT = Path(__file__).resolve().parent
-_DATA_DIR_RAW = os.getenv("DATA_DIR", "./data").strip()
-_p = Path(_DATA_DIR_RAW)
-DATA_DIR = _p.resolve() if _p.is_absolute() else (_BACKEND_ROOT / _p).resolve()
+_APP_ROOT = Path(__file__).resolve().parent
+_APP_HOME = _APP_ROOT.parent
+_data_raw = os.getenv("DATA_DIR", "").strip()
+if not _data_raw:
+    DATA_DIR = (_APP_HOME / "data").resolve()
+else:
+    _p = Path(_data_raw)
+    DATA_DIR = _p.resolve() if _p.is_absolute() else (_APP_ROOT / _p).resolve()
 
 # ── Derived Subdirectories ────────────────────────────────────────────────────
 # Organized as requested: Kaggle, ChromaDB, Journal, and Uploads

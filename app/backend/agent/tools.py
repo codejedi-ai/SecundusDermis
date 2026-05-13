@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import config
+
 log = logging.getLogger(__name__)
 
 # ── Module-level state (set by init_tools) ────────────────────────────────────
@@ -261,7 +263,7 @@ def describe_image(image_id: str) -> dict:
     """
     try:
         # Find the uploaded image file
-        uploads_dir = Path("./data/uploads")
+        uploads_dir = config.UPLOADS_DIR
         image_path = None
         for ext in ["jpg", "jpeg", "png", "webp"]:
             candidate = uploads_dir / f"{image_id}.{ext}"

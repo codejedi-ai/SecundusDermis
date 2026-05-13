@@ -1283,7 +1283,7 @@ async def delete_conversation(session_id: Optional[str] = Header(default=None, a
     return {"messages": []}
 
 
-# ── Serve React SPA (when running as single container) ────────────────────────
+# ── Serve React SPA (single-process: API + static dist) ────────────────────────
 _FRONTEND_DIR = Path(os.getenv("FRONTEND_DIR", "./static"))
 
 if _FRONTEND_DIR.exists():

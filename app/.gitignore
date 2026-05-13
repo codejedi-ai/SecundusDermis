@@ -1,6 +1,9 @@
 # Data directories
 data/
 
+# Vite production bundle (sibling of frontend/); same as repo-root dist/ ignore
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
