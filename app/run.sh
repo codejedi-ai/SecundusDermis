@@ -31,20 +31,44 @@ trap cleanup EXIT INT TERM
 
 cmd="${1:-dev}"
 
+_wait_agent_http() {
+  local url="http://127.0.0.1:8765/health" n=0 max=120
+  echo "[run.sh] Waiting for stylist agent at $url …"
+  while (( n < max )); do
+    if command -v curl >/dev/null 2>&1; then
+      if curl -sf "$url" >/dev/null 2>&1; then
+        echo "[run.sh] Agent is ready."
+        return 0
+      fi
+    else
+      if python3 -c "import urllib.request; r=urllib.request.urlopen('$url', timeout=2); assert r.status == 200" >/dev/null 2>&1; then
+        echo "[run.sh] Agent is ready."
+        return 0
+      fi
+    fi
+    sleep 0.25
+    n=$((n + 1))
+  done
+  echo "[run.sh] ERROR: Agent did not respond at $url within ~$(( max / 4 ))s. Check GEMINI_API_KEY and logs above." >&2
+  return 1
+}
+
 case "$cmd" in
-  dev)
-    echo "[run.sh] Starting FastAPI on http://127.0.0.1:8000 (background)…"
-    (cd "$ROOT/backend" && exec uv run python api.py) &
+  dev|dev-with-agent)
+    echo "[run.sh] Starting stylist agent on http://127.0.0.1:8765 (background)…"
+    (cd "$ROOT/agent" && PYTHONPATH="$ROOT/agent:$ROOT/backend" exec uv run uvicorn secundus_agent.main:app --host 127.0.0.1 --port 8765) &
+    AGENT_PID=$!
+    _wait_agent_http || exit 1
+    echo "[run.sh] Starting FastAPI with AGENT_SERVICE_URL=http://127.0.0.1:8765 (background)…"
+    # Vite proxies /api → FastAPI: browser is same-origin to Vite, so HTTP CORS on the API is off.
+    (cd "$ROOT/backend" && AGENT_SERVICE_URL=http://127.0.0.1:8765 CORS_ENABLED=false exec uv run python api.py) &
     BACKEND_PID=$!
     echo "[run.sh] Starting Vite on http://127.0.0.1:5173 …"
     (cd "$ROOT/frontend" && exec npm run dev)
     ;;
-  dev-with-agent)
-    echo "[run.sh] Starting stylist agent on http://127.0.0.1:8765 (background)…"
-    (cd "$ROOT/agent" && PYTHONPATH="$ROOT/agent:$ROOT/backend" exec uv run uvicorn secundus_agent.main:app --host 127.0.0.1 --port 8765) &
-    AGENT_PID=$!
-    echo "[run.sh] Starting FastAPI with AGENT_SERVICE_URL=http://127.0.0.1:8765 …"
-    (cd "$ROOT/backend" && AGENT_SERVICE_URL=http://127.0.0.1:8765 exec uv run python api.py) &
+  backend-only)
+    echo "[run.sh] FastAPI only on http://127.0.0.1:8000 (no agent process — patron chat needs AGENT_SERVICE_URL; legacy /api/chat* return 410)."
+    (cd "$ROOT/backend" && CORS_ENABLED=false exec uv run python api.py) &
     BACKEND_PID=$!
     echo "[run.sh] Starting Vite on http://127.0.0.1:5173 …"
     (cd "$ROOT/frontend" && exec npm run dev)
@@ -78,10 +102,11 @@ case "$cmd" in
     echo "[run.sh] Done. Output: $ROOT/dist"
     ;;
   *)
-    echo "Usage: $0 [dev|dev-with-agent|agent|prod|build-only]"
+    echo "Usage: $0 [dev|dev-with-agent|backend-only|agent|prod|build-only]"
     echo ""
-    echo "  dev            — FastAPI :8000 + Vite :5173 (use this while developing)."
-    echo "  dev-with-agent — FastAPI (proxies chat to agent) + agent :8765 + Vite :5173. Set AGENT_INTERNAL_SECRET + GEMINI_API_KEY in env."
+    echo "  dev / dev-with-agent — stylist agent :8765 (wait for /health) + FastAPI + Vite :5173."
+    echo "                         Set GEMINI_API_KEY + AGENT_INTERNAL_SECRET in env (see app/backend/.env.example)."
+    echo "  backend-only         — FastAPI + Vite without starting the agent (chat 503 unless AGENT_SERVICE_URL is set)."
     echo "  agent          — Stylist agent service only on :8765 (separate Gemini process; see app/agent/README.md)."
     echo "  prod           — npm run build (→ app/dist) then API only on :8000 (single process serves UI + API)."
     echo "  build-only     — rebuild app/dist only."

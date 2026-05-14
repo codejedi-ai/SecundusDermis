@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { Camera, Users, Play } from 'lucide-react'
+import { useAuth } from '../lib/auth-context'
 
 const Footer = () => {
+  const { user } = useAuth()
   return (
     <footer className="footer">
       <div className="footer-main">
@@ -27,7 +29,9 @@ const Footer = () => {
             <h4 className="footer-heading">About</h4>
             <ul className="footer-list">
               <li><Link to="/about" className="footer-link">AI Agent Playground</Link></li>
-              <li><Link to="/blog" className="footer-link">Journal</Link></li>
+              {user && (
+                <li><Link to="/agents" className="footer-link">AI agents</Link></li>
+              )}
             </ul>
           </div>
 

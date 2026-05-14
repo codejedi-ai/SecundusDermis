@@ -1,6 +1,6 @@
 """
 Backend-invoking smoke test for email delivery.
-Hits the /auth/request-password-reset and /auth/resend-verification endpoints.
+Hits ``/api/auth/request-password-reset`` and ``/api/auth/resend-verification``.
 
 Usage:
   uv run python smoke_test_email.py --to you@example.com --url http://localhost:8000
@@ -31,9 +31,9 @@ def main() -> int:
     base_url = args.url.rstrip("/")
     
     if args.type == "verify":
-        logging.info("Triggering verification email for %s via %s/auth/resend-verification", args.to, base_url)
+        logging.info("Triggering verification email for %s via %s/api/auth/resend-verification", args.to, base_url)
         try:
-            res = requests.post(f"{base_url}/auth/resend-verification", json={"email": args.to})
+            res = requests.post(f"{base_url}/api/auth/resend-verification", json={"email": args.to})
             res.raise_for_status()
             logging.info("Backend response: %s", res.json())
         except Exception as e:
@@ -41,10 +41,10 @@ def main() -> int:
             return 1
             
     elif args.type == "reset":
-        logging.info("Triggering reset email for %s via %s/auth/request-password-reset", args.to, base_url)
+        logging.info("Triggering reset email for %s via %s/api/auth/request-password-reset", args.to, base_url)
         try:
             # Note: This will only work if the user exists in the backend.
-            res = requests.post(f"{base_url}/auth/request-password-reset", json={"email": args.to})
+            res = requests.post(f"{base_url}/api/auth/request-password-reset", json={"email": args.to})
             if res.status_code == 404:
                 logging.warning("User %s not found in backend. You might need to sign up first.", args.to)
             res.raise_for_status()

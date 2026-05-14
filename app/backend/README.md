@@ -24,6 +24,19 @@ uv sync                       # Install dependencies
 uv run python api.py          # Start server on http://localhost:8000
 ```
 
+### Unit tests (no API keys)
+
+From the **repository root** (uses `pytest.ini` + `.github/tests/unit/`):
+
+```bash
+uv sync --project app/backend
+uv run --project app/backend pytest .github/tests/unit -v
+```
+
+### GitHub Actions
+
+Workflow **Backend CI** (`.github/workflows/backend-ci.yml`) runs `uv sync`, restores/saves cache on `app/data/kaggle`, runs `app/backend/download_data.py` when the repository secret **`KAGGLE_API_TOKEN`** is set, then `pytest .github/tests/unit`. Fork pull requests do not receive secrets, so the Kaggle step is skipped there while unit tests still run.
+
 The DeepFashion Multimodal dataset (~650 MB, 12,278 items) downloads automatically on first run if `data/labels_front.csv` is missing.
 
 ### Interactive API Docs
@@ -38,7 +51,7 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | ✓ | Gemini API key for agent LLM and VLM image search |
 | `KAGGLE_API_TOKEN` | ✓ | Kaggle API token (KGAT format) for dataset download |
-| `ADMIN_KEY` | ✓ | Protects `POST /journal` — change before deploy |
+| `ADMIN_KEY` | — | Reserved for future admin-only routes (not enforced on agents articles today) |
 | `AGENT_MODEL` | — | `gemini-3.1-pro-preview-customtools` (default) |
 | `VLM_MODEL` | — | `gemini-3.1-pro-preview` (default) |
 | `IMAGES_DIR` | — | `./data/selected_images` (default) |
@@ -63,7 +76,7 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 │                              └─ colour histogram re-rank │
 │                                                          │
 │  /catalog/*  ── pure in-memory filtering (zero API cost) │
-│  /journal/*  ── JSON posts in app/data/journal           │
+│  /api/conversations  ── chat transcript JSON per session                  │
 │  /auth/*     ── in-memory session auth                   │
 │  /cart/*     ── in-memory cart per session               │
 └──────────────────────────────────────────────────────────┘
@@ -102,13 +115,13 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 | `/catalog/stats` | GET | Catalog statistics (total, categories, genders) |
 | `/catalog/random` | GET | Random products for discovery UI |
 
-### Journal (Editorial)
+### Conversations (stylist chat)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/journal` | GET/POST | List articles or create new (requires `X-Admin-Key`) |
-| `/journal/{slug}` | GET | Single article by slug |
-| `/journal/categories` | GET | Available journal categories |
+| `/conversations` | GET | List messages for the authenticated `session-id` |
+| `/conversations` | POST | Append one chat turn |
+| `/conversations` | DELETE | Clear history for the session |
 
 ### Authentication
 
@@ -227,7 +240,7 @@ Auto-downloaded on first run via `download_and_extract()`.
 | Data Type | Storage |
 |-----------|---------|
 | Product catalog | In-memory list (loaded from CSV) |
-| Journal articles | Markdown files with YAML frontmatter in `/journal/` |
+| On-disk journal JSON | Used for agent RAG / `search_journal` only (no public HTTP CRUD) |
 | User sessions | In-memory dict (`session_id → user_id`) |
 | Shopping cart | In-memory per-session dict |
 | Conversation history | In-memory store keyed by `session_id` |

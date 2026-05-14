@@ -14,8 +14,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import config
 from google.genai import types as genai_types
+
+from secundus_agent.backend_config import api_config as config
 
 log = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def get_catalog_stats() -> dict:
 
 def search_journal(keywords: str, n_results: int = 3) -> dict:
     """
-    Search the Secundus Dermis Journal (blog) for entries matching the given keywords.
+    Search the Secundus Dermis Journal (editorial articles) for entries matching the given keywords.
     Use this when the customer asks about fashion advice, how-to guides, category
     explanations, or any topic that might be covered in an editorial article.
 
@@ -244,7 +245,7 @@ def describe_image(image_id: str) -> dict:
     For full-body images, this tool identifies ALL visible garments (top, bottom, shoes,
     accessories) and returns them organized by body area.
 
-    The image must first be uploaded via POST /image/upload, which returns an image_id.
+    The image must first be uploaded via POST /api/patron/agent/image/upload (Bearer sdag_…), which returns an image_id.
 
     Args:
         image_id: The ID returned when the image was uploaded (e.g., "img_1234567890_abc123").

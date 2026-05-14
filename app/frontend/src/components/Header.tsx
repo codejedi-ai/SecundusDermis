@@ -67,12 +67,7 @@ const Header = () => {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/about" className="nav-link">About</Link>
             <Link to="/shop" className="nav-link">Shop</Link>
-            <Link to="/blog" className="nav-link">Journal</Link>
-            {user && (
-              <Link to="/blog/new" className="nav-link nav-link-write">
-                Write
-              </Link>
-            )}
+            {user && <Link to="/agents" className="nav-link">AI agents</Link>}
           </nav>
         </div>
 
@@ -161,7 +156,7 @@ const Header = () => {
             ['/', 'Home'],
             ['/about', 'About'],
             ['/shop', 'Shop'],
-            ['/blog', 'Journal'],
+            ...(user ? [['/agents', 'AI agents']] as [string, string][] : []),
             ['/faq', 'FAQ'],
             ['/contact', 'Contact'],
             ['/cart', 'Cart'],
@@ -173,11 +168,6 @@ const Header = () => {
               {label}
             </Link>
           ))}
-          {user && (
-            <Link to="/blog/new" className="mobile-nav-link mobile-nav-write" onClick={() => setIsMenuOpen(false)}>
-              ✏️ Write
-            </Link>
-          )}
         </nav>
       </div>
     </header>

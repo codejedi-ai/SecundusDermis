@@ -3,9 +3,19 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { ImagePlus, Loader2, MessageCircle, Send, X, Trash2, Sparkles, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import * as chatApi from '../services/chatApi';
+import { shopContextForChatRequest } from '../lib/shopBridge';
 import { useShop } from '../lib/shop-context';
-import { useConvo } from '../lib/convo-context';
+import { useConvo, SD_CHAT_OPEN_EVENT } from '../lib/convo-context';
 import { useAuth } from '../lib/auth-context';
+import { getPatronAgentChatApiKey } from '../lib/patron-agent-chat-key';
+import { useSocket } from '../lib/socket-context';
+import {
+  fingerprintProductIds,
+  fingerprintStylistReply,
+  shouldSkipDuplicateFoundProducts,
+  shouldSkipDuplicateStylistReply,
+} from '../lib/stylistSocketDedupe';
+import { userFacingChatSendError } from '../lib/chat-copy';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +32,6 @@ interface ThinkingStep {
   tool?: string;
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
 
 export type ChatWidgetVariant = 'floating' | 'embedded';
 
@@ -47,6 +56,74 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
   const location = useLocation();
 
   const { gender, category, query, setGender, setCategory } = useShop();
+  const {
+    lastStylistCatalog,
+    clearStylistCatalog,
+    lastStylistFound,
+    clearStylistFound,
+    lastStylistReply,
+    clearStylistReply,
+  } = useSocket();
+
+  const sseFinalFingerprintRef = useRef<string | null>(null);
+  const seenFoundProductFingerprintsRef = useRef<Set<string>>(new Set());
+
+  // Live catalog line in the thinking panel while the stream is in flight.
+  useEffect(() => {
+    if (!loading || !lastStylistCatalog) return;
+    const n = lastStylistCatalog.products.length;
+    const hint = `Live catalog (${n} items, ${lastStylistCatalog.mode})`;
+    setThinkingSteps((prev) => {
+      if (prev.some((s) => s.content === hint)) return prev;
+      return [...prev, { kind: 'thinking', content: hint }];
+    });
+  }, [loading, lastStylistCatalog]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (lastStylistCatalog) clearStylistCatalog();
+  }, [loading, lastStylistCatalog, clearStylistCatalog]);
+
+  // Mid-turn product cards from Socket.IO (dedupe vs SSE found_products by product ids).
+  useEffect(() => {
+    if (!lastStylistFound) return;
+    const products = lastStylistFound.products;
+    if (
+      shouldSkipDuplicateFoundProducts({
+        socketProducts: products,
+        seenFingerprints: seenFoundProductFingerprintsRef.current,
+      })
+    ) {
+      clearStylistFound();
+      return;
+    }
+    seenFoundProductFingerprintsRef.current.add(fingerprintProductIds(products));
+    addMessage({
+      role: 'assistant',
+      content: lastStylistFound.content,
+      products,
+    });
+    clearStylistFound();
+  }, [lastStylistFound, addMessage, clearStylistFound]);
+
+  // Final assistant message from Socket.IO when SSE is absent (e.g. other tab) or skip if duplicate of SSE final.
+  useEffect(() => {
+    if (!lastStylistReply || loading) return;
+    const { reply, products } = lastStylistReply;
+    const list = products ?? [];
+    if (
+      shouldSkipDuplicateStylistReply({
+        socketReply: reply,
+        socketProducts: list,
+        sseFinalFingerprint: sseFinalFingerprintRef.current,
+      })
+    ) {
+      clearStylistReply();
+      return;
+    }
+    addMessage({ role: 'assistant', content: reply, products: list });
+    clearStylistReply();
+  }, [lastStylistReply, loading, addMessage, clearStylistReply]);
 
   useEffect(() => {
     if (embedded) setOpen(true);
@@ -57,9 +134,15 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     chatApi.checkHealth().then(setOnline);
   }, []);
 
+  useEffect(() => {
+    const open = () => setOpen(true);
+    window.addEventListener(SD_CHAT_OPEN_EVENT, open);
+    return () => window.removeEventListener(SD_CHAT_OPEN_EVENT, open);
+  }, []);
+
   // Scroll to bottom whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messages, loading, pendingImage]);
 
   // ── Send message (text + optional image) ─────────────────────────────────
@@ -70,6 +153,14 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
     // Require at least text or image
     if ((!text && !hasImage) || loading) return;
+
+    const patronKey = getPatronAgentChatApiKey();
+    if (!patronKey) {
+      return;
+    }
+
+    sseFinalFingerprintRef.current = null;
+    seenFoundProductFingerprintsRef.current.clear();
 
     // Capture and clear state
     const imageToSend = pendingImage;
@@ -98,21 +189,30 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     setLoading(true);
 
     try {
+      const historyForApi: chatApi.ChatMessage[] = messages
+        .filter((m) => m.id !== 'init')
+        .map((m) => ({ role: m.role, content: m.content }));
+
       // Use streaming to show thinking process
-      const imageId = hasImage ? await chatApi.uploadImage(imageToSend!.file).then(r => r.image_id) : undefined;
-      
+      const imageId = hasImage
+        ? await chatApi.uploadImage(imageToSend!.file, patronKey).then((r) => r.image_id)
+        : undefined;
+
       const stream = chatApi.chatStream(
         text || (hasImage ? 'Find items similar to this image' : ''),
         imageId,
         chatSessionId,
         authSessionId,
-        { gender: gender || undefined, category: category || undefined, query: query || undefined },
+        shopContextForChatRequest({ gender, category, query }),
+        patronKey,
+        historyForApi,
       );
 
       let finalReply = '';
       let products: chatApi.Product[] = [];
       let sections: chatApi.ProductSection[] = [];
       let shopFilter: chatApi.ShopFilter | undefined;
+      let sawFinalEvent = false;
 
       for await (const event of stream) {
         if (event.type === 'thinking_start' || event.type === 'thinking') {
@@ -132,14 +232,19 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
             setThinkingSteps(prev => [...prev, { kind: 'tool_result', content: event.content! }]);
             // If individual products are sent mid-stream (via show_product tool), add them as a message
             if (event.products && event.products.length > 0) {
-              addMessage({ 
-                role: 'assistant', 
-                content: event.content, 
-                products: event.products 
-              });
+              const fp = fingerprintProductIds(event.products);
+              if (!seenFoundProductFingerprintsRef.current.has(fp)) {
+                seenFoundProductFingerprintsRef.current.add(fp);
+                addMessage({
+                  role: 'assistant',
+                  content: event.content,
+                  products: event.products,
+                });
+              }
             }
           }
         } else if (event.type === 'final') {
+          sawFinalEvent = true;
           finalReply = event.reply || '';
           products = event.products || [];
           sections = event.sections || [];
@@ -160,14 +265,34 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
         }
       }
 
-      if (finalReply) {
-        addMessage({ role: 'assistant', content: finalReply, products, sections });
+      const trimmed = finalReply.trim();
+      const hasFinalPayload =
+        trimmed.length > 0 ||
+        (products?.length ?? 0) > 0 ||
+        (sections?.length ?? 0) > 0;
+
+      if (hasFinalPayload) {
+        addMessage({
+          role: 'assistant',
+          content: trimmed || 'Pieces from the archive:',
+          products,
+          sections,
+        });
+        sseFinalFingerprintRef.current = fingerprintStylistReply(trimmed || '(products)', products);
+      } else if (sawFinalEvent) {
+        sseFinalFingerprintRef.current = null;
+        addMessage({
+          role: 'assistant',
+          content: 'No default agent selected.',
+        });
+      } else {
+        sseFinalFingerprintRef.current = null;
       }
     } catch (err) {
       console.error('Chat error:', err);
       addMessage({
         role: 'assistant',
-        content: 'Could not reach the server. Make sure the backend is running.',
+        content: userFacingChatSendError(err),
       });
     } finally {
       setLoading(false);
@@ -201,7 +326,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
           {/* Header */}
           <div className="chat-header">
             <div className="chat-header-info">
-              <span className="chat-title">Fashion AI</span>
+              <span className="chat-title">Stylist</span>
               <span className={`chat-status ${online === false ? 'offline' : 'online'}`}>
                 {online === false ? 'Offline' : 'Online'}
               </span>
@@ -213,7 +338,6 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
             )}
           </div>
 
-          {/* Messages */}
           <div className="chat-messages">
             {messages.map((msg) => (
               <div key={msg.id} className={`chat-message ${msg.role}`}>

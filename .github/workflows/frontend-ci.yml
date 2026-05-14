@@ -1,0 +1,37 @@
+# Vitest + TypeScript + Vite production build (no live backend).
+
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Vitest (shopBridge, stylist dedupe, agent Socket.IO → React context)
+        run: npm run test
+
+      - name: Production build (includes `tsc`)
+        run: npm run build
+
+      # Same app/dist tree FastAPI serves in prod (api.py FRONTEND_DIST_DIR); not run in backend-only CI.
+      - name: Production bundle matches backend hosting layout
+        working-directory: app/backend
+        run: uv run pytest ../../.github/tests/production_dist -v

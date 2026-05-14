@@ -108,7 +108,7 @@ def describe_image(image_id: str) -> dict:
 ```
 
 **Flow:**
-1. Frontend uploads image to `POST /image/upload` → gets `image_id`
+1. Frontend uploads image to `POST /api/patron/agent/image/upload` (Bearer `sdag_…`) → gets `image_id`
 2. Frontend sends message to agent: "Find items similar to image {image_id}"
 3. Agent calls `describe_image(image_id)` → gets structured keywords
 4. Agent calls `search_by_keywords(...)` as normal

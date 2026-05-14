@@ -1,6 +1,7 @@
 /* =============================================================================
    GLOBAL — design tokens + base resets
-   This is the single file to edit for any theming or coloring change.
+   Colors, spacing, shadows, and motion live in :root below — prefer var(--…)
+   in feature stylesheets (home.css, agents.css, shop.css, …) over ad‑hoc hex values.
    ============================================================================= */
 
 /* ---------------------------------------------------------------------------

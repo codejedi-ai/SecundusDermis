@@ -1,25 +1,43 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Star } from 'lucide-react'
+import { ArrowRight, Star, MessageCircle } from 'lucide-react'
 import * as fashionApi from '../services/fashionApi'
+import { SD_CHAT_OPEN_EVENT } from '../lib/convo-context'
 import Footer from '../components/Footer'
 
 const FALLBACK_IMG = '/img/placeholder.svg'
 
-const features = [
-  {
-    title: "12,000+ Pieces",
-    description: "Men's and women's clothing across every category"
-  },
-  {
-    title: "Keyword & Image Search",
-    description: "Describe it in words or upload a photo to find your match"
-  },
-  {
-    title: "AI Shopping Agent",
-    description: "Ask naturally — the agent finds, filters, and recommends"
-  }
-]
+function formatGenderLine(genders: string[]): string {
+  const labels = genders.map((g) => {
+    if (g === 'MEN') return "men's"
+    if (g === 'WOMEN') return "women's"
+    return g.replace(/_/g, ' ').toLowerCase()
+  })
+  if (labels.length === 0) return 'Multiple departments'
+  if (labels.length === 1) return labels[0]!
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
+}
+
+/** Titles and descriptions are derived from GET /catalog/stats (no hardcoded catalog counts). */
+function buildHomeFeatures(stats: fashionApi.CatalogStats): { title: string; description: string }[] {
+  const titleCatalog = `${stats.total_products.toLocaleString()} pieces`
+  const descCatalog = `${formatGenderLine(stats.genders)} — ${stats.categories.length.toLocaleString()} categories in the loaded catalog.`
+
+  const mode = stats.search_mode ?? 'keyword search'
+  const titleSearch = mode.replace(/\s*\+\s*/g, ' · ')
+  const descSearch = `Server-reported retrieval stack: ${mode}. Text search scans in-memory descriptions; the chat flow can combine this with the configured agent.`
+
+  const ragLine =
+    stats.embedding_model && stats.embedding_dim != null
+      ? ` Editorial RAG uses ${stats.embedding_model} (${stats.embedding_dim.toLocaleString()}-dim vectors).`
+      : ''
+
+  return [
+    { title: titleCatalog, description: descCatalog },
+    { title: titleSearch, description: `${descSearch}${ragLine}` },
+  ]
+}
 
 const testimonials = [
   {
@@ -44,9 +62,14 @@ const testimonials = [
 
 const Home = () => {
   const [catalogProducts, setCatalogProducts] = useState<fashionApi.Product[]>([])
+  const [catalogStats, setCatalogStats] = useState<fashionApi.CatalogStats | null>(null)
 
   useEffect(() => {
     fashionApi.getRandomProducts(12).then((r) => setCatalogProducts(r.products)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fashionApi.getCatalogStats().then(setCatalogStats).catch(() => setCatalogStats(null))
   }, [])
 
   return (
@@ -110,20 +133,45 @@ const Home = () => {
             <span className="brand-label">Our Approach</span>
             <h2 className="brand-title">Fashion, Understood</h2>
             <p className="brand-text">
-              Secundus Dermis pairs a curated catalog of over 12,000 pieces with an AI assistant
-              that actually understands what you want — describe it, upload a photo, or just browse.
+              {catalogStats ? (
+                <>
+                  Secundus Dermis pairs a catalog of {catalogStats.total_products.toLocaleString()} pieces
+                  with an AI assistant that routes through this deployment&apos;s search stack — describe what you
+                  want, browse filters, or use chat when the agent is enabled.
+                </>
+              ) : (
+                <>
+                  Secundus Dermis pairs the loaded catalog with an AI assistant — describe what you want,
+                  browse filters, or use chat when the agent is enabled.
+                </>
+              )}
             </p>
             <p className="brand-text">
-              No filters to fiddle with. Just tell the agent what you're looking for and it will
-              find the closest match across the entire collection instantly.
+              {catalogStats ? (
+                <>
+                  The shop grid reflects the same in-memory index ({catalogStats.categories.length} categories;
+                  {' '}
+                  {catalogStats.genders.join(' / ')})
+                  embedding calls for catalog rows.
+                </>
+              ) : (
+                <>
+                  The shop grid reflects the in-memory catalog; keyword search stays on the API without
+                  per-query cloud embedding calls for catalog rows.
+                </>
+              )}
             </p>
             <div className="brand-story-features">
-              {features.map((feature, index) => (
-                <div key={index} className="brand-story-feature">
-                  <h3 className="brand-story-feature-title">{feature.title}</h3>
-                  <p className="brand-story-feature-desc">{feature.description}</p>
-                </div>
-              ))}
+              {catalogStats ? (
+                buildHomeFeatures(catalogStats).map((feature, index) => (
+                  <div key={index} className="brand-story-feature">
+                    <h3 className="brand-story-feature-title">{feature.title}</h3>
+                    <p className="brand-story-feature-desc">{feature.description}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="brand-story-feature-desc">Loading catalog facts…</p>
+              )}
             </div>
           </div>
           <div className="brand-story-image">
@@ -169,7 +217,19 @@ const Home = () => {
             Click the chat icon in the bottom right corner to start chatting with our AI fashion assistant.
             Describe what you're looking for or upload a photo to find similar styles.
           </p>
-          <Link to="/shop" className="newsletter-btn">Browse Catalog</Link>
+          <div className="newsletter-actions">
+            <Link to="/shop" className="newsletter-btn">
+              Browse catalog
+            </Link>
+            <button
+              type="button"
+              className="newsletter-btn newsletter-btn--outline"
+              onClick={() => window.dispatchEvent(new CustomEvent(SD_CHAT_OPEN_EVENT))}
+            >
+              <MessageCircle size={16} aria-hidden style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />
+              Open patron chat
+            </button>
+          </div>
         </div>
       </section>
     </div>

@@ -14,6 +14,8 @@ from google.genai import types as genai_types
 from shop_tools import build_sidebar_snapshot
 
 from .deps import StylistAgentDeps
+from .payloads import merge_patron_shop_context
+from .ws_envelope import build_found_products_envelope, build_stylist_reply_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +51,7 @@ async def gemini_chat_stream(
     logger.info("[AGENT LOOP] Start: %s... image=%s", message[:80], image_bytes is not None)
     yield {"type": "thinking_start", "content": "Initializing agentic workflow..."}
 
-    shop_state: dict[str, Any] = {"gender": None, "category": None, "query": None}
-    if shop_context is not None:
-        dumped = shop_context.model_dump() if hasattr(shop_context, "model_dump") else dict(shop_context or {})
-        shop_state["gender"] = dumped.get("gender") or None
-        shop_state["category"] = dumped.get("category") or None
-        shop_state["query"] = dumped.get("query") or None
-        if isinstance(shop_state["gender"], str) and not shop_state["gender"].strip():
-            shop_state["gender"] = None
-        if isinstance(shop_state["category"], str) and not shop_state["category"].strip():
-            shop_state["category"] = None
+    shop_state = merge_patron_shop_context(shop_context)
 
     rag_context = await deps.build_initial_rag_context(message, image_bytes, mime_type, ws_session_id)
 
@@ -205,7 +198,7 @@ async def gemini_chat_stream(
                     )
 
                     if ws_session_id:
-                        await deps.emit_shop_sync(ws_session_id, shop_state)
+                        await deps.emit_shop_sync(ws_session_id, shop_state, tool="manage_sidebar")
 
                     if observation.get("ui_action_required"):
                         payload = observation["action_payload"] or {}
@@ -239,7 +232,7 @@ async def gemini_chat_stream(
                     if ws_session_id and kw:
                         q = str(kw).strip()
                         shop_state["query"] = q or None
-                        await deps.emit_shop_sync(ws_session_id, shop_state)
+                        await deps.emit_shop_sync(ws_session_id, shop_state, tool="keyword_search")
 
                         yield {"type": "text", "content": f"*[Agent searches for: \"{kw}\"]*\n\n"}
 
@@ -264,6 +257,15 @@ async def gemini_chat_stream(
                             "products": [{k: v for k, v in item.items() if k != "image_path"}],
                         }
                         observation = {"status": f"Product {pid} shown.", "product_name": item["product_name"]}
+                        if ws_session_id:
+                            slim = [{k: v for k, v in item.items() if k != "image_path"}]
+                            env = build_found_products_envelope(
+                                ws_session_id,
+                                content=f"Stylist presents: {item['product_name']}",
+                                products=slim,
+                                tool="show_product",
+                            )
+                            await deps.emit_stylist_ws(ws_session_id, env)
                     else:
                         observation = {"status": "Error: Product not found."}
 
@@ -300,17 +302,32 @@ async def gemini_chat_stream(
 
     yield {"type": "tool_result", "tool": "gemini_narrative", "content": "Stylist curation complete"}
 
-    if ws_session_id:
-        await deps.emit_catalog_results(ws_session_id, discovered_products[:12], "agent_curated")
-
-    yield {"type": "text", "content": final_prose}
-
     _filt: dict[str, Any] = {
         "gender": shop_state.get("gender") or "",
         "category": shop_state.get("category") or "",
     }
     if shop_state.get("query"):
         _filt["query"] = shop_state["query"]
+
+    if ws_session_id:
+        await deps.emit_catalog_results(
+            ws_session_id,
+            discovered_products[:12],
+            "agent_curated",
+            tool="gemini_close",
+        )
+        await deps.emit_stylist_ws(
+            ws_session_id,
+            build_stylist_reply_envelope(
+                ws_session_id,
+                reply=final_prose,
+                products=discovered_products[:12],
+                intent="agent_curation",
+                filter_=_filt,
+            ),
+        )
+
+    yield {"type": "text", "content": final_prose}
 
     yield {
         "type": "final",

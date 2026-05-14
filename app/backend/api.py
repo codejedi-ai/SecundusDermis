@@ -1,7 +1,8 @@
 """
-SecundusDermis — AI Fashion Agent API (Direct Gemini SDK)
-==========================================================
-Uses Gemini SDK directly - NO ADK.
+SecundusDermis — AI Fashion Agent API
+=====================================
+Catalog, auth, Socket.IO, and HTTP proxy to the **standalone agent** for all Gemini usage.
+The API process does not load ``google.genai``; set ``AGENT_SERVICE_URL`` + ``AGENT_INTERNAL_SECRET``.
 """
 
 from pathlib import Path
@@ -16,9 +17,21 @@ load_dotenv(_backend_dir / ".env", override=True)
 import sys
 
 _agent_dir = (_backend_dir.parent / "agent").resolve()
+_backend_s = str(_backend_dir)
 _agent_s = str(_agent_dir)
-if _agent_s not in sys.path:
-    sys.path.insert(0, _agent_s)
+# Backend must precede ``app/agent`` on ``sys.path`` so ``import config`` resolves to
+# ``app/backend/config.py``. (``app/agent/config/`` is a package named ``config``.)
+# Inserting agent then backend only works if backend was not already on sys.path; when
+# ``python api.py`` runs from ``app/backend``, the script dir is already [0], so the second
+# insert is skipped and agent incorrectly wins — remove both, then prepend backend then agent.
+for _p in (_backend_s, _agent_s):
+    try:
+        while _p in sys.path:
+            sys.path.remove(_p)
+    except ValueError:
+        pass
+sys.path.insert(0, _agent_s)
+sys.path.insert(0, _backend_s)
 
 import asyncio
 import csv
@@ -31,18 +44,16 @@ import random
 import re
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Optional, AsyncGenerator
+from typing import Any, Optional
 
 import base64
 import httpx
 import numpy as np
 import socketio
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from google import genai
-from google.genai import types as genai_types
 from PIL import Image
 from pydantic import BaseModel, Field
 
@@ -61,6 +72,7 @@ from conversations import get_messages, append_message, clear_messages as clear_
 from download_data import download_and_extract
 from user_profiles import add_cart_item as profile_add_cart, record_activity as profile_record_activity
 from vector_store import get_vector_store, ImageEmbedding, JournalEmbedding
+from patron_shop_selection import get_selection as get_patron_shop_selection, put_selection as put_patron_shop_selection
 
 from smtp_mail import (
     gmail_smtp_configured,
@@ -68,9 +80,24 @@ from smtp_mail import (
     try_send_verification_email,
 )
 
+import agent_api_keys
+from agent_socket_bridge import (
+    AGENT_SERVICE_ROOM,
+    DEPLOYMENT_STATS_ROOM,
+    count_room_participants,
+    emit_to_agent_connections,
+    forget_patron_agent_socket,
+    replace_patron_agent_socket_exclusive,
+)
 from stylist_backend_bridge import InProcessStylistDeps
-from stylist_loop.stream_loop import StylistGeminiRuntime, gemini_chat_stream as stylist_react_stream
-from shop_tools import keyword_search as shop_keyword_search, manage_sidebar as shop_manage_sidebar
+from shop_tools import (
+    build_catalog_stats,
+    keyword_search as shop_keyword_search,
+    manage_sidebar as shop_manage_sidebar,
+)
+
+# Shown on GET /health and GET /catalog/stats (keep in sync).
+SEARCH_MODE_LABEL = "keyword + agent LLM"
 
 # ── Socket.IO server ───────────────────────────────────────────────────────────
 
@@ -88,34 +115,56 @@ HIST_BINS = 32
 
 # ── Journal Indexing ─────────────────────────────────────────────────────────
 
-def index_journal():
-    """Embed all journal entries and store in ChromaDB for RAG."""
+async def _wait_for_agent_http_ready(max_wait_s: float = 45.0, interval_s: float = 0.25) -> bool:
+    """Poll agent ``GET /health`` so startup does not race a freshly spawned ``uvicorn``."""
+    if state.agent_http is None:
+        return False
+    deadline = time.monotonic() + max_wait_s
+    while time.monotonic() < deadline:
+        try:
+            resp = await state.agent_http.get("/health")
+            if resp.status_code == 200:
+                return True
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError, httpx.TimeoutException):
+            pass
+        except Exception:
+            pass
+        await asyncio.sleep(interval_s)
+    return False
+
+
+async def index_journal_async():
+    """Embed all journal entries and store in ChromaDB for RAG (embeddings from the agent service)."""
     posts = _load_journal()
     vs = get_vector_store()
-    logger.info(f"Indexing {len(posts)} journal entries for RAG...")
-    
+    if state.agent_http is None:
+        logger.warning("Skipping journal vector indexing (configure AGENT_SERVICE_URL + agent process).")
+        return
+    if not await _wait_for_agent_http_ready():
+        logger.warning(
+            "Agent not reachable at %s within startup wait — skipping journal vector indexing.",
+            config.AGENT_SERVICE_URL,
+        )
+        return
+    logger.info(f"Indexing {len(posts)} journal entries for RAG via agent …")
+    from agent_ai_client import embed_document
+
     for post in posts:
         slug = post.get("slug")
-        # Upsert is fine for Chroma
         text_to_embed = f"{post.get('title')}\n{post.get('excerpt')}\n{post.get('body')[:1000]}"
         try:
-            # Check if state.gemini is initialized (it is in lifespan)
-            res = state.gemini.models.embed_content(
-                model=config.EMBED_MODEL,
-                contents=text_to_embed,
-                config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            embedding = await embed_document(state.agent_http, text_to_embed)
+            vs.add_journal_embedding(
+                JournalEmbedding(
+                    slug=slug,
+                    embedding=embedding,
+                    title=post.get("title", ""),
+                    excerpt=post.get("excerpt", ""),
+                    category=post.get("category", ""),
+                    tags=post.get("tags", []),
+                    date=post.get("date", ""),
+                )
             )
-            embedding = res.embeddings[0].values
-            
-            vs.add_journal_embedding(JournalEmbedding(
-                slug=slug,
-                embedding=embedding,
-                title=post.get("title", ""),
-                excerpt=post.get("excerpt", ""),
-                category=post.get("category", ""),
-                tags=post.get("tags", []),
-                date=post.get("date", "")
-            ))
         except Exception as e:
             logger.error(f"Failed to index journal {slug}: {e}")
 
@@ -272,7 +321,7 @@ def load_prompts() -> dict:
 # ── Global state ──────────────────────────────────────────────────────────────
 
 class _State:
-    gemini: genai.Client | None = None
+    agent_http: httpx.AsyncClient | None = None
     catalog: list[dict] = []
     histogram_cache: dict[str, np.ndarray] = {}
     prompts: dict = {}
@@ -281,10 +330,20 @@ state = _State()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not config.GEMINI_API_KEY:
-        raise RuntimeError("config.GEMINI_API_KEY is not set")
-    logger.info("Initialising Gemini client …")
-    state.gemini = genai.Client(api_key=config.GEMINI_API_KEY)
+    state.agent_http = None
+    if config.AGENT_SERVICE_URL and config.AGENT_INTERNAL_SECRET:
+        state.agent_http = httpx.AsyncClient(
+            base_url=config.AGENT_SERVICE_URL.rstrip("/"),
+            headers={"X-Agent-Secret": config.AGENT_INTERNAL_SECRET},
+            timeout=httpx.Timeout(600.0, read=600.0),
+        )
+        logger.info("AI agent HTTP client → %s", config.AGENT_SERVICE_URL)
+    else:
+        logger.warning(
+            "AGENT_SERVICE_URL and AGENT_INTERNAL_SECRET should both be set — "
+            "chat, RAG embeddings, and journal indexing require the standalone agent (Gemini is not loaded in the API process).",
+        )
+
     logger.info("Checking dataset …")
     download_and_extract()
     logger.info("Loading catalog …")
@@ -294,39 +353,42 @@ async def lifespan(app: FastAPI):
     logger.info("Initialising vector store …")
     get_vector_store()
     logger.info("Indexing journal for RAG …")
-    index_journal()
+    await index_journal_async()
     try:
         from atelier_tools.tools import init_tools as _init_atelier_tools
 
-        _init_atelier_tools(state.catalog, _load_journal(), state.gemini)
-        logger.info("Atelier toolkit initialised (ADK tools + describe_image client).")
+        _init_atelier_tools(state.catalog, _load_journal(), None)
+        logger.info("Atelier toolkit initialised (catalog + journal; describe_image disabled without local Gemini).")
     except Exception as _atelier_exc:
         logger.warning("Atelier toolkit init skipped: %s", _atelier_exc)
-    logger.info(f"Ready. {len(state.catalog)} products. Using direct Gemini SDK.")
+    logger.info(f"Ready. {len(state.catalog)} products. LLM/embeddings use agent service when configured.")
     yield
+    if state.agent_http is not None:
+        await state.agent_http.aclose()
+        state.agent_http = None
     logger.info("Shutting down.")
 
 # Ensure static directories exist so mounting doesn't fail
 config.init_directories()
 
 app = FastAPI(title="SecundusDermis", version="5.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+if config.CORS_ENABLED:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.cors_allow_origins(),
+        allow_origin_regex=config.CORS_ALLOW_ORIGIN_REGEX,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    logging.getLogger(__name__).info(
+        "HTTP CORS disabled (CORS_ENABLED=false); browser traffic should use same-origin "
+        "paths (e.g. Vite proxy /api and /socket.io → FastAPI)."
+    )
 
-
-class StripApiPrefixMiddleware:
-    """Allow frontend calls to /api/* when backend routes are defined at /*."""
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http":
-            path = scope.get("path", "")
-            if path == "/api":
-                scope = {**scope, "path": "/"}
-            elif path.startswith("/api/"):
-                scope = {**scope, "path": path[4:]}
-        await self.app(scope, receive, send)
+# Patron-facing JSON routes live under ``PUBLIC_HTTP_API_PREFIX`` (``/api/...``) — no path stripping.
+api_router = APIRouter(prefix=config.PUBLIC_HTTP_API_PREFIX)
 
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
@@ -361,6 +423,26 @@ class ShopFilter(BaseModel):
     category: Optional[str] = None
     query: Optional[str] = None
 
+
+class PatronShopSelectionUpdate(BaseModel):
+    """Browser shop UI selection — persisted per authenticated session."""
+
+    gender: Optional[str] = None
+    category: Optional[str] = None
+    query: Optional[str] = None
+    input_value: Optional[str] = None
+    sidebar_width: Optional[int] = None
+
+
+class PatronActivityRecord(BaseModel):
+    """Browser telemetry for logged-in patrons (MonitorProvider → ``user_profiles.activity``)."""
+
+    event: str
+    path: str = ""
+    label: str = ""
+    seconds: int = 0
+
+
 class ChatResponse(BaseModel):
     reply: str
     products: list[dict] = []
@@ -375,11 +457,15 @@ class ConvoMessage(BaseModel):
 async def dump_context_to_journal(session_id: str, email: str):
     """Summarize the current session history and save to journal as a catering diary entry."""
     messages = get_messages(session_id)
-    if not messages: return
+    if not messages:
+        return
+
+    if state.agent_http is None:
+        logger.warning("[DIARY DUMP] Skipped: no agent HTTP client configured.")
+        return
 
     logger.info(f"[DIARY DUMP] Summarizing journey for {email} ({len(messages)} messages)")
-    
-    # Use Gemini to summarize the style journey
+
     history_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
     prompt = f"""You are the Secundus Dermis AI fashion guardian. 
 You are writing a private "Catering Diary" entry about your interaction with patron {email}.
@@ -397,12 +483,14 @@ Patron history:
 {history_text}
 """
     try:
-        response = state.gemini.models.generate_content(model=config.MODEL, contents=prompt)
-        data = json.loads(re.search(r"\{.*\}", response.text, re.DOTALL).group())
-        
+        from agent_ai_client import embed_document, generate_text
+
+        raw = await generate_text(state.agent_http, prompt)
+        data = json.loads(re.search(r"\{.*\}", raw, re.DOTALL).group())
+
         slug = f"journey-{int(time.time())}-{hashlib.md5(email.encode()).hexdigest()[:4]}"
         path = config.JOURNAL_DIR / f"{slug}.json"
-        
+
         journal_entry = {
             "title": data.get("title", "A New Patron Discovery"),
             "excerpt": data.get("excerpt", "Reflecting on a recent styling session."),
@@ -414,30 +502,27 @@ Patron history:
             "image": "/image-hero.jpeg",
             "read_time": "3 min read",
             "body": data.get("body", ""),
-            "slug": slug
+            "slug": slug,
         }
-        
+
         with open(path, "w", encoding="utf-8") as f:
             json.dump(journal_entry, f, indent=2)
-            
-        # Index immediately for RAG
+
         try:
             vs = get_vector_store()
             text_to_embed = f"{journal_entry['title']}\n{journal_entry['excerpt']}\n{journal_entry['body'][:1000]}"
-            res = state.gemini.models.embed_content(
-                model=config.EMBED_MODEL,
-                contents=text_to_embed,
-                config=genai_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            embedding = await embed_document(state.agent_http, text_to_embed)
+            vs.add_journal_embedding(
+                JournalEmbedding(
+                    slug=slug,
+                    embedding=embedding,
+                    title=journal_entry["title"],
+                    excerpt=journal_entry["excerpt"],
+                    category=journal_entry["category"],
+                    tags=journal_entry["tags"],
+                    date=journal_entry["date"],
+                )
             )
-            vs.add_journal_embedding(JournalEmbedding(
-                slug=slug,
-                embedding=res.embeddings[0].values,
-                title=journal_entry["title"],
-                excerpt=journal_entry["excerpt"],
-                category=journal_entry["category"],
-                tags=journal_entry["tags"],
-                date=journal_entry["date"]
-            ))
         except Exception as idx_err:
             logger.error(f"[DIARY DUMP] Failed to index new entry: {idx_err}")
 
@@ -497,97 +582,6 @@ def keyword_search(keywords: str, gender: Optional[str] = None, category: Option
     return shop_keyword_search(state.catalog, keywords, gender=gender, category=category, n_results=n_results)
 
 
-# ── VLA Chat ──────────────────────────────────────────────────────────────────
-
-async def gemini_chat(message: str, image_bytes: Optional[bytes] = None, mime_type: str = "image/jpeg") -> dict:
-    """Direct Gemini VLA call - no ADK."""
-    logger.info(f"[GEMINI] Chat: {message[:80]}... image={image_bytes is not None}")
-
-    parts = []
-    if image_bytes:
-        parts.append(genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
-    
-    # Prompt that forces product search
-    sys_prompt = state.prompts.get("system_stylist", "")
-    prompt = f"""{sys_prompt}
-
-User request: {message}
-
-IMPORTANT: Search the catalog for products matching this request and return them.
-Focus on finding actual products from the catalog."""
-    parts.append(genai_types.Part(text=prompt))
-
-    gen_config = genai_types.GenerateContentConfig(
-        thinking_config=genai_types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
-        temperature=1.0,
-    )
-
-    try:
-        response = state.gemini.models.generate_content(model=config.MODEL, contents=parts, config=gen_config)
-        reply = response.text or ""
-        logger.info(f"[GEMINI] Reply: {reply[:150]}...")
-
-        # ALWAYS search catalog for any user message (unless it's clearly just greeting)
-        msg_lower = message.lower().strip()
-        products = []
-        shop_filter = None
-        
-        if not any(greet in msg_lower for greet in ["hello", "hi ", "hey", "good morning", "good evening", "thanks", "thank you"]):
-            products = keyword_search(keywords=message, n_results=8)
-            logger.info(f"[GEMINI] Found {len(products)} products")
-            
-            # Determine filter from products - simple approach
-            if products:
-                genders = [p.get("gender") for p in products if p.get("gender") and p.get("gender") != "unknown"]
-                categories = [p.get("category") for p in products if p.get("category") and p.get("category") != "unknown"]
-                if genders or categories:
-                    shop_filter = {
-                        "gender": genders[0] if genders else None,
-                        "category": categories[0] if categories else None,
-                        "query": message,
-                    }
-                    logger.info(f"[GEMINI] Filter: {shop_filter}")
-
-        return {"reply": reply, "products": products, "intent": "text_search" if products else "chitchat", "filter": shop_filter}
-    except Exception as e:
-        logger.exception(f"[GEMINI] Error: {e}")
-        return {"reply": f"Error: {str(e)[:100]}", "products": [], "intent": "error", "filter": None}
-
-async def gemini_chat_stream(
-    message: str,
-    image_bytes: Optional[bytes] = None,
-    mime_type: str = "image/jpeg",
-    ws_session_id: Optional[str] = None,
-    shop_context: Optional[ShopContext] = None,
-) -> AsyncGenerator[dict, None]:
-    """
-    Agentic ReAct loop for Secundus Dermis (delegates to ``app/agent/stylist_loop`` with in-process catalog/RAG/socket).
-    """
-    try:
-        from agent_prompts import merge_prompts_with_soul
-    except ImportError:
-        merge_prompts_with_soul = lambda p: dict(p)
-
-    deps = InProcessStylistDeps(sio, state)
-    rt = StylistGeminiRuntime(
-        gemini_client=state.gemini,
-        model=config.MODEL,
-        thinking_level=config.THINKING_LEVEL,
-    )
-    _prompts = merge_prompts_with_soul(dict(state.prompts))
-    async for ev in stylist_react_stream(
-        message,
-        image_bytes,
-        mime_type,
-        ws_session_id,
-        shop_context,
-        rt=rt,
-        prompts=_prompts,
-        deps=deps,
-    ):
-        yield ev
-
-
 def verify_agent_secret(x_agent_secret: Optional[str] = Header(default=None, alias="X-Agent-Secret")) -> None:
     if not config.AGENT_INTERNAL_SECRET:
         raise HTTPException(
@@ -631,6 +625,47 @@ class AgentEmitBody(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentSocketBroadcastBody(BaseModel):
+    """Push an arbitrary Socket.IO event to all trusted agent connections (duplex bridge)."""
+
+    event: str = "sd_bridge"
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentApiKeyCreate(BaseModel):
+    """Human-friendly label for an autonomous agent or tool using this key."""
+
+    label: str = ""
+
+
+class PatronAgentContextEntry(BaseModel):
+    text: str
+    source: str = "agent"
+
+
+class PatronAgentContextAppend(BaseModel):
+    entries: list[PatronAgentContextEntry] = Field(default_factory=list)
+
+
+async def require_patron_agent_api_key(
+    authorization: Optional[str] = Header(default=None),
+    x_patron_agent_api_key: Optional[str] = Header(default=None, alias="X-Patron-Agent-Api-Key"),
+) -> str:
+    """Resolve patron email from ``Bearer sdag_…`` or ``X-Patron-Agent-Api-Key``."""
+    raw = (x_patron_agent_api_key or "").strip()
+    if not raw and authorization and authorization.lower().startswith("bearer "):
+        raw = authorization[7:].strip()
+    if not raw:
+        raise HTTPException(
+            status_code=401,
+            detail="Patron agent API key required (Authorization: Bearer … or X-Patron-Agent-Api-Key).",
+        )
+    email = agent_api_keys.verify_token(raw)
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid or revoked patron agent API key.")
+    return email
+
+
 @app.post("/internal/agent/keyword-search")
 async def internal_agent_keyword_search(
     body: AgentKeywordSearchBody,
@@ -671,7 +706,7 @@ async def internal_agent_rag_context(
             img_bytes = base64.b64decode(body.image_base64)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid image_base64")
-    deps = InProcessStylistDeps(sio, state)
+    deps = InProcessStylistDeps(sio, state, agent_http=state.agent_http)
     rag = await deps.build_initial_rag_context(body.message, img_bytes, body.mime_type, body.session_id)
     return {"rag_context": rag}
 
@@ -687,6 +722,17 @@ async def internal_agent_emit(
     await sio.emit(body.event, body.data, room=room)
     return {"ok": True}
 
+
+@app.post("/internal/agent/socket-to-agents")
+async def internal_agent_socket_to_agents(
+    body: AgentSocketBroadcastBody,
+    _authorized: None = Depends(verify_agent_secret),
+):
+    """Emit to room ``sd_agent_service`` (every Socket.IO client authenticated as agent)."""
+    ev = (body.event or "").strip() or "sd_bridge"
+    await emit_to_agent_connections(sio, ev, body.data)
+    return {"ok": True, "room": AGENT_SERVICE_ROOM}
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -696,119 +742,62 @@ async def root():
         return FileResponse(index_file)
     return {"name": "SecundusDermis", "status": "running", "catalog_size": len(state.catalog)}
 
-@app.get("/health")
+@api_router.get("/health")
 async def health():
     return {
         "status": "healthy",
         "catalog_size": len(state.catalog),
-        "search_mode": "keyword + VLM",
+        "search_mode": SEARCH_MODE_LABEL,
         "agent_proxy": bool(config.AGENT_SERVICE_URL),
     }
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    image_bytes = None
-    mime_type = "image/jpeg"
-    if request.image_id:
-        for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
-            if candidate.exists():
-                image_bytes = candidate.read_bytes()
-                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
-                break
-    
-    result = await gemini_chat(request.message, image_bytes, mime_type)
-    return ChatResponse(reply=result["reply"], products=result["products"], intent=result["intent"])
 
-@app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
-    image_bytes = None
-    mime_type = "image/jpeg"
-    if request.image_id:
-        for ext in ["jpg", "jpeg", "png", "webp"]:
-            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
-            if candidate.exists():
-                image_bytes = candidate.read_bytes()
-                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
-                break
+_AGENT_MANIFEST_PATH = Path(__file__).resolve().parents[2] / "AGENT_MANIFEST.md"
 
-    if config.AGENT_SERVICE_URL:
-        if not config.AGENT_INTERNAL_SECRET:
-            raise HTTPException(
-                status_code=503,
-                detail="AGENT_SERVICE_URL is set but AGENT_INTERNAL_SECRET is missing.",
-            )
-        payload = {
-            "message": request.message,
-            "session_id": request.session_id,
-            "shop_context": request.shop_context.model_dump() if request.shop_context else None,
-            "mime_type": mime_type,
-            "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else None,
-            "prompts": state.prompts,
-        }
-        agent_base = config.AGENT_SERVICE_URL.rstrip("/")
-        headers = {"X-Agent-Secret": config.AGENT_INTERNAL_SECRET, "Accept": "text/event-stream"}
 
-        async def proxy_gen():
-            timeout = httpx.Timeout(600.0, read=600.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{agent_base}/v1/chat/stream",
-                    json=payload,
-                    headers=headers,
-                ) as resp:
-                    resp.raise_for_status()
-                    async for chunk in resp.aiter_bytes():
-                        yield chunk
-
-        return StreamingResponse(
-            proxy_gen(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+@api_router.get("/agent-manifest.md")
+async def agent_manifest_md():
+    """Agent integration contract (SD rooms, internal HTTP, optional Socket.IO)."""
+    if not _AGENT_MANIFEST_PATH.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="AGENT_MANIFEST.md not found at repository root.",
         )
-
-    async def generate():
-        async for event in gemini_chat_stream(
-            request.message,
-            image_bytes,
-            mime_type,
-            ws_session_id=request.session_id,
-            shop_context=request.shop_context,
-        ):
-            if event == "data: [DONE]\n\n":
-                yield event
-            else:
-                yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    return FileResponse(
+        _AGENT_MANIFEST_PATH,
+        media_type="text/markdown; charset=utf-8",
+        filename="agent-manifest.md",
     )
 
-@app.post("/image/upload", response_model=ImageUploadResponse)
-async def upload_image_for_agent(file: UploadFile = File(...)):
-    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
-        raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
-    
-    config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    
-    content = await file.read()
-    hash_part = hashlib.md5(content).hexdigest()[:8]
-    timestamp = int(time.time())
-    image_id = f"img_{timestamp}_{hash_part}"
-    
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
-    file_path = config.UPLOADS_DIR / f"{image_id}.{ext}"
-    file_path.write_bytes(content)
-    
-    logger.info(f"Uploaded image: {image_id} -> {file_path}")
-    return ImageUploadResponse(image_id=image_id, message="Image uploaded successfully")
+
+PATRON_ONLY_CHAT_RETIRED_DETAIL = (
+    "Session-only browser chat and anonymous image upload are retired. Use a patron sdag_… API key with "
+    "POST /api/patron/agent/chat/stream and POST /api/patron/agent/image/upload "
+    "(Authorization: Bearer … or X-Patron-Agent-Api-Key). See GET /api/agent-manifest.md and /agents."
+)
+
+
+@api_router.post("/chat")
+async def chat_retired():
+    """Legacy route — browsers must use ``POST /api/patron/agent/chat`` with a patron API key."""
+    raise HTTPException(status_code=410, detail=PATRON_ONLY_CHAT_RETIRED_DETAIL)
+
+
+@api_router.post("/chat/stream")
+async def chat_stream_retired():
+    """Legacy route — browsers must use ``POST /api/patron/agent/chat/stream`` with a patron API key."""
+    raise HTTPException(status_code=410, detail=PATRON_ONLY_CHAT_RETIRED_DETAIL)
+
+
+@api_router.post("/image/upload")
+async def upload_image_retired():
+    """Legacy route — use ``POST /api/patron/agent/image/upload`` with a patron API key."""
+    raise HTTPException(status_code=410, detail=PATRON_ONLY_CHAT_RETIRED_DETAIL)
+
 
 # ── Auth, Cart, etc (simplified) ──────────────────────────────────────────────
 
-@app.post("/auth/register", response_model=RegisterResponse, status_code=201)
+@api_router.post("/auth/register", response_model=RegisterResponse, status_code=201)
 async def register(user: UserCreate):
     try:
         out = create_user(email=user.email, password=user.password, name=user.name)
@@ -842,14 +831,14 @@ async def register(user: UserCreate):
     )
 
 
-@app.post("/auth/verify-email")
+@api_router.post("/auth/verify-email")
 async def verify_email_endpoint(body: VerifyEmailRequest):
     if not verify_email_token(body.token):
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
     return {"status": "Email verified. You can sign in now."}
 
 
-@app.post("/auth/resend-verification")
+@api_router.post("/auth/resend-verification")
 async def resend_verification_ep(payload: dict):
     """Send a new verification link if the account exists and is not yet verified."""
     email = (payload.get("email") or "").strip()
@@ -872,22 +861,50 @@ async def resend_verification_ep(payload: dict):
     return out
 
 
-@app.post("/auth/login", response_model=LoginResponse)
+@api_router.post("/auth/login", response_model=LoginResponse)
 async def login(user: UserLogin):
-    session_id, auth_err = try_authenticate(email=user.email, password=user.password)
+    session_id, auth_err = try_authenticate(
+        email=(user.email or "").strip(),
+        password=user.password or "",
+    )
     if auth_err == "email_not_verified":
         raise HTTPException(
             status_code=403,
             detail="Please verify your email before signing in. Check your inbox for the verification link.",
         )
+    if auth_err == "user_not_found":
+        logging.getLogger(__name__).info(
+            "Auth login failed (user_not_found) for email=%s",
+            (user.email or "").strip().lower(),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="No account is registered with this email address. Sign up first or check the spelling.",
+        )
+    if auth_err == "invalid_password":
+        logging.getLogger(__name__).info(
+            "Auth login failed (invalid_password) for email=%s",
+            (user.email or "").strip().lower(),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect password for this account. Try again or use Forgot Password.",
+        )
     if session_id is None:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        logging.getLogger(__name__).info(
+            "Auth login failed (unknown) for email=%s",
+            (user.email or "").strip().lower(),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Sign in failed. Check your email and password.",
+        )
     user_resp = get_user_from_session(session_id)
     response = JSONResponse(content={"session_id": session_id, "user": {"email": user_resp.email, "name": user_resp.name}})
     response.set_cookie(key="sd_session_id", value=session_id, max_age=30*24*60*60, httponly=True, samesite="lax", path="/")
     return response
 
-@app.post("/auth/logout")
+@api_router.post("/auth/logout")
 async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if session_id: logout(session_id)
     response = JSONResponse(content={"status": "logged out"})
@@ -895,7 +912,7 @@ async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias
     return response
 
 
-@app.get("/auth/me")
+@api_router.get("/auth/me")
 async def get_current_user(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
@@ -903,7 +920,7 @@ async def get_current_user(session_id: Optional[str] = Header(default=None, alia
     return user
 
 
-@app.put("/auth/me")
+@api_router.put("/auth/me")
 async def update_profile(
     profile: "ProfileUpdate",
     session_id: Optional[str] = Header(default=None, alias="session-id"),
@@ -919,7 +936,7 @@ async def update_profile(
     return updated
 
 
-@app.post("/auth/request-password-reset")
+@api_router.post("/auth/request-password-reset")
 async def request_password_reset(email_data: dict):
     """
     Request a password reset. If the address is registered, sends a reset link when SMTP is configured.
@@ -970,7 +987,7 @@ async def request_password_reset(email_data: dict):
     }
 
 
-@app.post("/auth/reset-password")
+@api_router.post("/auth/reset-password")
 async def reset_password_endpoint(reset_data: PasswordReset):
     """
     Reset password using a valid token.
@@ -982,22 +999,304 @@ async def reset_password_endpoint(reset_data: PasswordReset):
     
     return {"status": "Password reset successful"}
 
-@app.get("/cart", response_model=CartResponse)
+
+@api_router.post("/auth/agent-api-keys")
+async def auth_create_agent_api_key(
+    body: AgentApiKeyCreate,
+    session_id: Optional[str] = Header(default=None, alias="session-id"),
+):
+    """Create a per-patron API key (plaintext returned once). Use with ``/patron/agent/*``."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    raw, meta = agent_api_keys.create_key(user.email, body.label)
+    return {"token": raw, **meta}
+
+
+@api_router.get("/auth/agent-api-keys")
+async def auth_list_agent_api_keys(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return {"keys": agent_api_keys.list_keys(user.email)}
+
+
+@api_router.delete("/auth/agent-api-keys/{key_id}")
+async def auth_revoke_agent_api_key(
+    key_id: str,
+    session_id: Optional[str] = Header(default=None, alias="session-id"),
+):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    if not agent_api_keys.revoke_key(user.email, key_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"status": "revoked", "id": key_id}
+
+
+@api_router.get("/cart", response_model=CartResponse)
 async def get_user_cart(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: return CartResponse(items=[], total=0.0)
     return get_cart(session_id)
 
-@app.post("/cart", response_model=CartResponse)
+@api_router.post("/cart", response_model=CartResponse)
 async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
 
-@app.delete("/cart/{product_id}", response_model=CartResponse)
+@api_router.delete("/cart/{product_id}", response_model=CartResponse)
 async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return remove_from_cart(session_id, product_id)
 
-@app.get("/catalog/browse")
+
+@api_router.get("/patron/shop-selection")
+async def patron_get_shop_selection(session_id: Optional[str] = Header(default=None, alias="session-id")):
+    """Return saved shop filters for this patron session, or ``{}`` if none / unauthenticated."""
+    if not session_id or not get_user_from_session(session_id):
+        return {}
+    return get_patron_shop_selection(session_id)
+
+
+@api_router.put("/patron/shop-selection")
+async def patron_put_shop_selection(
+    body: PatronShopSelectionUpdate,
+    session_id: Optional[str] = Header(default=None, alias="session-id"),
+):
+    """Persist shop selection (gender, category, search, sidebar width) for cross-page + return visits."""
+    if not session_id or not get_user_from_session(session_id):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    payload = body.model_dump(exclude_unset=True)
+    return put_patron_shop_selection(session_id, payload)
+
+
+@api_router.post("/patron/activity")
+async def patron_post_activity(
+    body: PatronActivityRecord,
+    session_id: Optional[str] = Header(default=None, alias="session-id"),
+):
+    """Append one activity row for the authenticated patron (best-effort analytics for the stylist)."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    profile_record_activity(user.email, body.event, body.path, body.label, body.seconds)
+    return {"ok": True}
+
+
+@api_router.get("/patron/agent/me")
+async def patron_agent_me(patron_email: str = Depends(require_patron_agent_api_key)):
+    """Who am I? — for tools and external agents using a patron API key."""
+    user = get_user_by_email(patron_email)
+    if not user:
+        return {"email": patron_email, "name": ""}
+    return {"email": user.email, "name": user.name or ""}
+
+
+@api_router.get("/patron/agent/context")
+async def patron_agent_context_get(
+    patron_email: str = Depends(require_patron_agent_api_key),
+    limit: int = 50,
+):
+    """Return recent context notes the patron's agents have posted (newest last)."""
+    lim = max(1, min(limit, agent_api_keys.MAX_CONTEXT_PER_USER))
+    return {"entries": agent_api_keys.get_context(patron_email, lim)}
+
+
+@api_router.post("/patron/agent/context")
+async def patron_agent_context_append(
+    body: PatronAgentContextAppend,
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """Append one or more short notes (e.g. agent observations) for later retrieval by the same patron."""
+    rows = [{"text": e.text, "source": e.source} for e in (body.entries or [])[:25]]
+    if not rows:
+        raise HTTPException(status_code=400, detail="entries required")
+    n = agent_api_keys.append_context_entries(patron_email, rows)
+    return {"ok": True, "stored_total": n}
+
+
+@api_router.post("/patron/agent/image/upload", response_model=ImageUploadResponse)
+async def patron_agent_upload_image(
+    file: UploadFile = File(...),
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """Upload image for patron chat (same storage as legacy ``/api/image/upload``); requires ``sdag_``."""
+    del patron_email
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
+
+    config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    content = await file.read()
+    hash_part = hashlib.md5(content).hexdigest()[:8]
+    timestamp = int(time.time())
+    image_id = f"img_{timestamp}_{hash_part}"
+
+    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
+    file_path = config.UPLOADS_DIR / f"{image_id}.{ext}"
+    file_path.write_bytes(content)
+
+    logger.info(f"[patron] uploaded image: {image_id} -> {file_path}")
+    return ImageUploadResponse(image_id=image_id, message="Image uploaded successfully")
+
+
+@api_router.post("/patron/agent/chat", response_model=ChatResponse)
+async def patron_agent_chat(
+    request: ChatRequest,
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """Non-streaming patron chat; JSON body matches the former ``/api/chat`` contract; authenticate with ``sdag_``."""
+    del patron_email
+    if state.agent_http is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AI agent is not configured. Set AGENT_SERVICE_URL and AGENT_INTERNAL_SECRET and run the agent process.",
+        )
+    image_bytes = None
+    mime_type = "image/jpeg"
+    if request.image_id:
+        for ext in ["jpg", "jpeg", "png", "webp"]:
+            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
+            if candidate.exists():
+                image_bytes = candidate.read_bytes()
+                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
+                break
+
+    try:
+        from agent_ai_client import chat_sync
+        from agent_prompts import merge_prompts_with_soul
+    except ImportError:
+        merge_prompts_with_soul = lambda p: dict(p)
+
+    prompts = merge_prompts_with_soul(dict(state.prompts))
+    body = {
+        "message": request.message,
+        "session_id": request.session_id,
+        "shop_context": request.shop_context.model_dump() if request.shop_context else None,
+        "mime_type": mime_type,
+        "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else None,
+        "prompts": prompts,
+    }
+    result = await chat_sync(state.agent_http, body)
+    return ChatResponse(
+        reply=result.get("reply") or "",
+        products=list(result.get("products") or []),
+        intent=result.get("intent") or "chitchat",
+        filter=result.get("filter"),
+    )
+
+
+@api_router.post("/patron/agent/chat/stream")
+async def patron_agent_chat_stream(
+    request: ChatRequest,
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """SSE patron chat; JSON body matches the former ``/api/chat/stream`` contract; authenticate with ``sdag_``."""
+    del patron_email
+    if state.agent_http is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AI agent is not configured. Set AGENT_SERVICE_URL and AGENT_INTERNAL_SECRET and run the agent process.",
+        )
+    if not config.AGENT_INTERNAL_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="AGENT_INTERNAL_SECRET is missing.",
+        )
+
+    image_bytes = None
+    mime_type = "image/jpeg"
+    if request.image_id:
+        for ext in ["jpg", "jpeg", "png", "webp"]:
+            candidate = config.UPLOADS_DIR / f"{request.image_id}.{ext}"
+            if candidate.exists():
+                image_bytes = candidate.read_bytes()
+                mime_type = "image/jpeg" if ext in ["jpg", "jpeg"] else f"image/{ext}"
+                break
+
+    try:
+        from agent_prompts import merge_prompts_with_soul
+    except ImportError:
+        merge_prompts_with_soul = lambda p: dict(p)
+
+    payload = {
+        "message": request.message,
+        "session_id": request.session_id,
+        "shop_context": request.shop_context.model_dump() if request.shop_context else None,
+        "mime_type": mime_type,
+        "image_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else None,
+        "prompts": merge_prompts_with_soul(dict(state.prompts)),
+    }
+
+    async def proxy_gen():
+        async with state.agent_http.stream(
+            "POST",
+            "/v1/chat/stream",
+            json=payload,
+            headers={"Accept": "text/event-stream"},
+        ) as resp:
+            resp.raise_for_status()
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+
+    return StreamingResponse(
+        proxy_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+async def _deployment_catalog_stats_dict() -> dict[str, Any]:
+    """Same JSON as ``GET /api/catalog/stats`` for HTTP and Socket.IO ``deployment_stats``."""
+    out = dict(
+        build_catalog_stats(
+            state.catalog,
+            embedding_model=config.EMBED_MODEL,
+            embedding_dim=config.EMBEDDING_DIM,
+            search_mode=SEARCH_MODE_LABEL,
+            agent_proxy=bool(config.AGENT_SERVICE_URL),
+        )
+    )
+    out["agent_socket_online_count"] = count_room_participants(sio, AGENT_SERVICE_ROOM)
+    out["stylist_agent_http_reachable"] = None
+    if state.agent_http is not None:
+        try:
+            r = await state.agent_http.get("/health", timeout=2.0)
+            out["stylist_agent_http_reachable"] = 200 <= r.status_code < 300
+        except Exception:
+            out["stylist_agent_http_reachable"] = False
+    return out
+
+
+async def _broadcast_deployment_stats_to_watchers() -> None:
+    """Push deployment stats to browsers watching ``/agents`` when duplex agent count may have changed."""
+    try:
+        if count_room_participants(sio, DEPLOYMENT_STATS_ROOM) == 0:
+            return
+    except Exception:
+        return
+    try:
+        payload = await _deployment_catalog_stats_dict()
+        await sio.emit("deployment_stats", payload, room=DEPLOYMENT_STATS_ROOM)
+    except Exception as e:
+        logger.warning("[SOCKETIO] deployment_stats broadcast failed: %s", e)
+
+
+@api_router.get("/catalog/stats")
+async def catalog_stats():
+    """Ground-truth catalog dimensions + deployment flags for UI copy."""
+    return await _deployment_catalog_stats_dict()
+
+
+@api_router.get("/catalog/browse")
 async def catalog_browse(offset: int = 0, limit: int = 24, gender: Optional[str] = None, category: Optional[str] = None, q: Optional[str] = None):
     limit = min(max(1, limit), 48)
     # Split query into individual words; show item if ANY word appears in description or name
@@ -1015,7 +1314,7 @@ async def catalog_browse(offset: int = 0, limit: int = 24, gender: Optional[str]
     page = filtered[offset:offset + limit]
     return {"products": [{k: v for k, v in p.items() if k != "image_path"} for p in page], "offset": offset, "limit": limit, "total": len(filtered)}
 
-@app.get("/catalog/random")
+@api_router.get("/catalog/random")
 async def catalog_random(n: int = 12):
     """Return n random products for the home page hero."""
     import random as _random
@@ -1023,7 +1322,7 @@ async def catalog_random(n: int = 12):
     return {"products": [{k: v for k, v in p.items() if k != "image_path"} for p in sample]}
 
 
-# ── Journal endpoints ─────────────────────────────────────────────────────────
+# ── On-disk journal JSON (agent RAG / tools only; no public editorial CRUD) ─
 
 def _load_journal() -> list[dict]:
     """Load all .json files from config.JOURNAL_DIR. Returns list sorted by date desc."""
@@ -1045,64 +1344,14 @@ def _load_journal() -> list[dict]:
     return sorted(posts, key=lambda x: x.get("date", ""), reverse=True)
 
 
-@app.get("/journal")
-async def journal_list(category: Optional[str] = None, featured: Optional[bool] = None):
-    posts = _load_journal()
-    if category:
-        posts = [p for p in posts if p.get("category", "").lower() == category.lower()]
-    if featured is not None:
-        posts = [p for p in posts if bool(p.get("featured")) == featured]
-    previews = [{k: v for k, v in p.items() if k != "body"} for p in posts]
-    return {"posts": previews, "total": len(previews)}
-
-
-@app.get("/journal/categories")
-async def journal_categories():
-    posts = _load_journal()
-    cats = sorted({p.get("category", "") for p in posts if p.get("category")})
-    return {"categories": cats}
-
-
-@app.get("/journal/{slug}")
-async def journal_post(slug: str):
-    path = config.JOURNAL_DIR / f"{slug}.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Post not found")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            post = json.load(f)
-            post.setdefault("slug", slug)
-            return post
-    except Exception as e:
-        logger.error(f"Failed to read journal JSON {path}: {e}")
-        raise HTTPException(status_code=500, detail="Could not read post")
-
-
-@app.post("/journal")
-async def create_journal_post(post: dict, session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id or not get_user_from_session(session_id):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    slug = re.sub(r"[^a-z0-9]+", "-", post.get("title", "untitled").lower()).strip("-")
-    path = config.JOURNAL_DIR / f"{slug}.json"
-    
-    # AI-authored by default as requested
-    post.setdefault("author", "Secundus Dermis")
-    post.setdefault("slug", slug)
-    
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(post, f, indent=2)
-        
-    return {"slug": slug, "message": "Post created"}
-
 # ── Conversations (Session Sync) ──────────────────────────────────────────────
 
-@app.get("/conversations")
+@api_router.get("/conversations")
 async def get_conversations(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: return {"messages": []}
     return {"messages": get_messages(session_id)}
 
-@app.post("/conversations")
+@api_router.post("/conversations")
 async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
@@ -1116,18 +1365,21 @@ async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(defa
             
     return {"messages": messages}
 
-@app.delete("/conversations")
+@api_router.delete("/conversations")
 async def clear_conversation_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     clear_convo(session_id)
     return {"status": "cleared"}
 
 
-@app.get("/catalog/product/{product_id}")
+@api_router.get("/catalog/product/{product_id}")
 async def catalog_product(product_id: str):
     item = next((p for p in state.catalog if p["product_id"] == product_id), None)
     if item is None: raise HTTPException(status_code=404, detail="Product not found")
     return {k: v for k, v in item.items() if k != "image_path"}
+
+
+app.include_router(api_router)
 
 
 @app.get("/{full_path:path}")
@@ -1148,7 +1400,7 @@ async def spa_fallback(full_path: str):
     ):
         return FileResponse(static_file)
 
-    api_prefixes = ("api", "auth", "chat", "image", "cart", "catalog", "journal", "conversations", "health", "images", "uploads", "socket.io", "assets", "internal")
+    api_prefixes = ("api", "auth", "chat", "image", "cart", "catalog", "conversations", "health", "images", "uploads", "socket.io", "assets", "internal", "patron")
     if full_path.startswith(api_prefixes):
         raise HTTPException(status_code=404, detail="Not found")
     index_file = FRONTEND_DIST_DIR / "index.html"
@@ -1160,18 +1412,53 @@ async def spa_fallback(full_path: str):
 
 @sio.on("connect")
 async def on_connect(sid, environ, auth=None):
+    auth = auth if isinstance(auth, dict) else {}
     role = "patron"
-    if config.AGENT_INTERNAL_SECRET and isinstance(auth, dict) and auth.get("agent_secret") == config.AGENT_INTERNAL_SECRET:
+    session: dict = {}
+
+    if config.AGENT_INTERNAL_SECRET and auth.get("agent_secret") == config.AGENT_INTERNAL_SECRET:
         role = "agent"
+        session["agent_auth"] = "internal"
         logger.info("[SOCKETIO] Agent service connected: %s", sid)
     else:
-        logger.info("[SOCKETIO] Client connected: %s", sid)
-    await sio.save_session(sid, {"role": role})
+        raw_key = auth.get("patron_agent_api_key") or auth.get("patronAgentApiKey")
+        if isinstance(raw_key, str) and raw_key.strip():
+            fp = agent_api_keys.verify_token_with_fingerprint(raw_key.strip())
+            if not fp:
+                logger.warning("[SOCKETIO] Reject connect sid=%s: invalid patron_agent_api_key", sid)
+                return False
+            email, key_hash = fp
+            await replace_patron_agent_socket_exclusive(sio, sid, key_hash)
+            role = "agent"
+            session["agent_auth"] = "patron_key"
+            session["patron_email"] = email
+            session["patron_key_hash"] = key_hash
+            logger.info("[SOCKETIO] Patron-key agent connected: sid=%s email=%s", sid, email)
+        else:
+            logger.info("[SOCKETIO] Client connected: %s", sid)
+
+    session["role"] = role
+    await sio.save_session(sid, session)
+    if role == "agent":
+        await sio.enter_room(sid, AGENT_SERVICE_ROOM)
+        await sio.emit(
+            "sd_bridge",
+            {"type": "welcome", "message": "agent duplex channel ready", "room": AGENT_SERVICE_ROOM},
+            to=sid,
+        )
+        await _broadcast_deployment_stats_to_watchers()
 
 
 @sio.on("disconnect")
 async def on_disconnect(sid):
     logger.info(f"[SOCKETIO] Client disconnected: {sid}")
+    try:
+        sess = await sio.get_session(sid)
+    except Exception:
+        sess = {}
+    forget_patron_agent_socket(sid)
+    if sess.get("role") == "agent":
+        await _broadcast_deployment_stats_to_watchers()
 
 
 @sio.on("join_session")
@@ -1185,9 +1472,55 @@ async def on_join_session(sid, data):
         logger.info(f"[SOCKETIO] {sid} joined room {room}")
 
 
+@sio.on("join_deployment_stats")
+async def on_join_deployment_stats(sid, data=None):
+    """Browser on ``/agents`` subscribes to ``deployment_stats`` (same payload as ``GET /api/catalog/stats``)."""
+    await sio.enter_room(sid, DEPLOYMENT_STATS_ROOM)
+    try:
+        payload = await _deployment_catalog_stats_dict()
+        await sio.emit("deployment_stats", payload, to=sid)
+    except Exception as e:
+        logger.warning("[SOCKETIO] join_deployment_stats snapshot failed: %s", e)
+
+
+@sio.on("leave_deployment_stats")
+async def on_leave_deployment_stats(sid, data=None):
+    try:
+        await sio.leave_room(sid, DEPLOYMENT_STATS_ROOM)
+    except Exception:
+        pass
+
+
 @sio.on("ping")
 async def on_ping(sid, data):
     await sio.emit("pong", {}, to=sid)
+
+
+@sio.on("agent_ping")
+async def on_agent_ping(sid, data):
+    """Lightweight agent → server ping; server answers on ``sd_bridge`` (duplex health)."""
+    try:
+        sess = await sio.get_session(sid)
+    except Exception:
+        sess = {}
+    if not sess or sess.get("role") != "agent":
+        return
+    payload = data if isinstance(data, dict) else {}
+    await sio.emit("sd_bridge", {"type": "pong", "echo": payload}, to=sid)
+
+
+@sio.on("agent_bridge")
+async def on_agent_bridge(sid, data):
+    """Generic agent → backend envelope (logging / future server-side handlers)."""
+    try:
+        sess = await sio.get_session(sid)
+    except Exception:
+        sess = {}
+    if not sess or sess.get("role") != "agent":
+        logger.warning("[SOCKETIO] agent_bridge rejected for sid=%s", sid)
+        return
+    if isinstance(data, dict):
+        logger.debug("[SOCKETIO] agent_bridge: %s", data.get("type", data))
 
 
 @sio.on("agent_emit")
@@ -1208,6 +1541,18 @@ async def on_agent_emit(sid, data):
         return
     if not isinstance(body, dict):
         body = {}
+    if event == "sd_stylist_message":
+        from stylist_loop.ws_envelope import validate_stylist_ws_message
+
+        ok, err, norm = validate_stylist_ws_message(body)
+        if not ok:
+            logger.warning("[SOCKETIO] sd_stylist_message rejected: %s", err)
+            return
+        if norm.get("session_id") != session_id:
+            logger.warning("[SOCKETIO] sd_stylist_message session_id does not match agent_emit envelope")
+            return
+        await sio.emit("sd_stylist_message", norm, room=f"sd_{session_id}")
+        return
     await sio.emit(event, body, room=f"sd_{session_id}")
 
 
@@ -1215,7 +1560,7 @@ async def on_agent_emit(sid, data):
 # All /socket.io/* requests are handled by Socket.IO;
 # everything else is forwarded to the FastAPI app.
 
-socket_app = socketio.ASGIApp(sio, other_asgi_app=StripApiPrefixMiddleware(app))
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 
 if __name__ == "__main__":

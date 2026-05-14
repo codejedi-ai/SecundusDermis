@@ -30,7 +30,7 @@ const FAQ = () => {
         },
         {
           question: "What can I ask the AI assistant?",
-          answer: "You can ask about specific products ('show me black leather jackets'), get styling advice ('what goes well with navy pants?'), find items by price range ('dresses under $50'), or even search the editorial journal for fashion tips and care guides."
+          answer: "You can ask about specific products ('show me black leather jackets'), get styling advice ('what goes well with navy pants?'), find items by price range ('dresses under $50'), or ask how to use patron API keys and chat history from the AI agents hub."
         }
       ]
     },

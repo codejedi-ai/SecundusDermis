@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import { useAuth } from '../lib/auth-context'
 
 const About = () => {
+  const { user } = useAuth()
   return (
     <div className="about-page">
       {/* Hero: 9:16 image left · copy + embedded AI playground right */}
@@ -39,7 +41,7 @@ const About = () => {
               This project demonstrates how a modern AI agent can handle the full
               surface area of e-commerce customer support: browsing a large catalog,
               answering product questions with grounded facts, searching by image,
-              surfacing Journal entries (the AI's catering diary), and maintaining conversation context
+              surfacing editorial posts (the AI&apos;s catering diary), and maintaining conversation context
               across page navigation — all with minimal API spend.
             </p>
             <p className="mission-text">
@@ -73,9 +75,11 @@ const About = () => {
               <Link to="/shop" className="craft-link">
                 Browse the catalog <ArrowRight size={16} />
               </Link>
-              <Link to="/blog" className="craft-link craft-link-secondary">
-                Read the journal <ArrowRight size={16} />
-              </Link>
+              {user && (
+                <Link to="/agents" className="craft-link craft-link-secondary">
+                  AI agents hub <ArrowRight size={16} />
+                </Link>
+              )}
             </div>
           </div>
         </div>

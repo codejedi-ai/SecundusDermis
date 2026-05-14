@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 
 const SignIn = () => {
@@ -9,6 +9,9 @@ const SignIn = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo =
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +20,7 @@ const SignIn = () => {
 
     try {
       await signIn(email, password);
-      navigate('/');
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {
@@ -71,7 +74,20 @@ const SignIn = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="auth-form">
-              {error && <div className="auth-error">{error}</div>}
+              {error && (
+                <div className="auth-error" role="alert" aria-live="assertive">
+                  {error}
+                  {/verify|verification/i.test(error) && (
+                    <p style={{ marginTop: '0.75rem', fontSize: '0.9rem', opacity: 0.95 }}>
+                      Use the link in your email, or open{' '}
+                      <Link to="/verify-email" className="auth-link">
+                        the verification page
+                      </Link>{' '}
+                      if you have a token from your inbox.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="email">Email</label>

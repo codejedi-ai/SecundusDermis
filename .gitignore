@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.github/tests/.env
 
 # Python
 __pycache__/
@@ -20,6 +21,8 @@ env/
 
 # Data (Kaggle, Chroma, Journal, Diary)
 data/
+# Ephemeral dev-only shared backend↔agent key (also under ignored data dirs)
+.sd_agent_internal_secret
 
 # Database
 *.sqlite3
@@ -41,4 +44,5 @@ dist/
 # Markdown
 *.md
 !README.md
+!AGENT_MANIFEST.md
 !notebook/*.md

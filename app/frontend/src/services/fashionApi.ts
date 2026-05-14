@@ -2,8 +2,8 @@
  * fashionApi.ts
  * Typed client for the SecundusDermis FastAPI backend.
  *
- * Dev: default `/api` + `/images` via Vite proxy. If you set VITE_API_URL to a full URL,
- * see `lib/api-base.ts` — image URLs pick up the same host automatically.
+ * Dev: ``API_BASE`` is ``/api`` (Vite proxy). Images use ``VITE_BACKEND_URL`` / ``VITE_IMAGE_URL`` or
+ * ``http://localhost:8000`` in dev (see ``lib/api-base.ts``). In ``npm run dev``, ``VITE_API_URL`` does not change ``API_BASE``.
  */
 
 import { API_BASE } from '../lib/api-base';
@@ -24,24 +24,6 @@ export interface Product {
 }
 
 
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-export interface ShopFilter {
-  gender?: string;
-  category?: string;
-  query?: string;
-}
-
-export interface ChatResponse {
-  reply: string;
-  products: Product[];
-  intent: 'chitchat' | 'text_search' | 'image_search';
-  filter?: ShopFilter;
-}
-
 export interface SearchResponse {
   results: Product[];
   query: string;
@@ -54,6 +36,14 @@ export interface CatalogStats {
   genders: string[];
   embedding_model: string;
   embedding_dim: number;
+  /** Same label as GET /api/health ``search_mode`` (server retrieval stack). */
+  search_mode?: string;
+  /** True when ``AGENT_SERVICE_URL`` is set (chat proxied to standalone agent). */
+  agent_proxy?: boolean;
+  /** Trusted Socket.IO clients in ``sd_agent_service`` (duplex agent channel). */
+  agent_socket_online_count?: number;
+  /** Whether ``GET {AGENT_SERVICE_URL}/health`` succeeded (null when agent HTTP client not configured). */
+  stylist_agent_http_reachable?: boolean | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -102,70 +92,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Endpoints ──────────────────────────────────────────────────────────────
 
-/** Unified ADK agent: conversational recommendations with tool-calling. */
-export async function* chatStream(
-  message: string,
-  imageId?: string,
-  history: ChatMessage[] = [],
-  sessionId?: string,
-  authSessionId?: string,
-): AsyncGenerator<{
-  type: 'thinking_start' | 'thinking' | 'found_products' | 'final';
-  content?: string;
-  reply?: string;
-  products?: Product[];
-  intent?: string;
-  filter?: ShopFilter;
-  tools_used?: string[];
-  count?: number;
-}> {
-  const response = await fetch(`${API_BASE}/chat/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message,
-      image_id: imageId,
-      history,
-      session_id: sessionId ?? 'default',
-      auth_session_id: authSessionId ?? null,
-    }),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error(`Stream failed: ${response.status}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          yield parsed;
-        } catch (e) {
-          console.warn('Failed to parse stream event:', data);
-        }
-      }
-    }
-  }
-}
-
 /** Direct text-search with optional filters. */
 export function searchText(
   query: string,
@@ -176,13 +102,6 @@ export function searchText(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, ...opts }),
   });
-}
-
-/** Upload an image for agent-based image search — returns image_id for use in chat. */
-export function uploadImageForAgent(file: File): Promise<{ image_id: string; message: string }> {
-  const form = new FormData();
-  form.append('file', file);
-  return request('/image/upload', { method: 'POST', body: form });
 }
 
 /** Paginated catalog browse — no embedding cost. */
@@ -274,6 +193,34 @@ export function removeCartItem(sessionId: string, productId: string): Promise<Ca
   });
 }
 
+export interface PatronShopSelectionDTO {
+  gender?: string;
+  category?: string;
+  query?: string;
+  input_value?: string;
+  sidebar_width?: number;
+}
+
+/** Saved shop filters for the logged-in patron (cross-page + return visits). */
+export function getPatronShopSelection(sessionId: string): Promise<PatronShopSelectionDTO> {
+  if (!sessionId) return Promise.resolve({});
+  return request<PatronShopSelectionDTO>('/patron/shop-selection', {
+    headers: { 'session-id': sessionId },
+  }).catch(() => ({}));
+}
+
+export function putPatronShopSelection(
+  sessionId: string,
+  body: PatronShopSelectionDTO,
+): Promise<PatronShopSelectionDTO> {
+  if (!sessionId) return Promise.resolve({});
+  return request<PatronShopSelectionDTO>('/patron/shop-selection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
+    body: JSON.stringify(body),
+  }).catch(() => ({}));
+}
+
 // ── Patron activity ────────────────────────────────────────────────────────
 
 export function recordActivity(
@@ -351,6 +298,42 @@ export function clearConversation(sessionId: string): Promise<void> {
         console.warn('[fashionApi] clearConversation error:', err);
       }
     });
+}
+
+// ── Patron agent API keys (external tools / agents) ─────────────────────────
+
+export interface AgentApiKeyMeta {
+  id: string;
+  prefix: string;
+  label: string;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+export interface AgentApiKeyCreated extends AgentApiKeyMeta {
+  token: string;
+}
+
+/** Mint/list/revoke keys require browser session (``session-id`` header); external tools use the returned key on ``/patron/agent/*``. */
+export function listAgentApiKeys(sessionId: string): Promise<{ keys: AgentApiKeyMeta[] }> {
+  return request('/auth/agent-api-keys', {
+    headers: { 'session-id': sessionId },
+  });
+}
+
+export function createAgentApiKey(label: string, sessionId: string): Promise<AgentApiKeyCreated> {
+  return request('/auth/agent-api-keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
+    body: JSON.stringify({ label }),
+  });
+}
+
+export function revokeAgentApiKey(keyId: string, sessionId: string): Promise<{ status: string; id: string }> {
+  return request(`/auth/agent-api-keys/${encodeURIComponent(keyId)}`, {
+    method: 'DELETE',
+    headers: { 'session-id': sessionId },
+  });
 }
 
 /** Returns true if the backend is reachable. */

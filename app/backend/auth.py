@@ -222,23 +222,28 @@ def try_authenticate(
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Check password and create session if verified.
-    Returns (session_id, error): error is None on success,
-    \"invalid_credentials\", or \"email_not_verified\".
+    Returns (session_id, error): error is None on success, or one of:
+    ``user_not_found``, ``invalid_password``, ``email_not_verified``.
     """
     email = email.lower().strip()
+    password = (password or "").rstrip("\r\n")
     if _notion_users_active():
         import notion_users as nu
 
         user = nu.get_user_record(email)
-        if not user or user["password_hash"] != _hash_password(password):
-            return None, "invalid_credentials"
+        if not user:
+            return None, "user_not_found"
+        if user["password_hash"] != _hash_password(password):
+            return None, "invalid_password"
         if not user.get("email_verified", True):
             return None, "email_not_verified"
     else:
         users = _users()
         user = users.get(email)
-        if not user or user["password_hash"] != _hash_password(password):
-            return None, "invalid_credentials"
+        if not user:
+            return None, "user_not_found"
+        if user["password_hash"] != _hash_password(password):
+            return None, "invalid_password"
         if not user.get("email_verified", True):
             return None, "email_not_verified"
     session_id = os.urandom(16).hex()
@@ -249,7 +254,7 @@ def try_authenticate(
 
 
 def authenticate_user(email: str, password: str) -> Optional[str]:
-    """Backward-compatible: session_id or None (loses unverified vs wrong-password)."""
+    """Backward-compatible: session_id or None (does not expose unverified vs wrong-password)."""
     sid, err = try_authenticate(email, password)
     if err:
         return None

@@ -14,19 +14,20 @@ if (!crypto.randomUUID) {
 
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import './index.css'
 import { ShopProvider, useShop } from './lib/shop-context'
 import { AuthProvider, useAuth } from './lib/auth-context'
 import { ConvoProvider, useConvo } from './lib/convo-context'
 import { CartProvider } from './lib/cart-context'
-import { BlogProvider } from './lib/blog-context'
 import { MonitorProvider } from './lib/monitor-context'
 import { SocketProvider, useSocket } from './lib/socket-context'
+import { mergeShopSyncPayload } from './lib/shopBridge'
 import Header from './components/Header'
+import ChatWidget from './components/ChatWidget'
 
 import ShopSidebar from './components/ShopSidebar'
-import AccountSidebar from './components/AccountSidebar'
+import AccountSidebar, { ACCOUNT_SECTION_IDS } from './components/AccountSidebar'
 import ResizableSidebar from './components/ResizableSidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
@@ -36,9 +37,7 @@ import Home from './pages/Home'
 import About from './pages/About'
 import Contact from './pages/Contact'
 import FAQ from './pages/FAQ'
-import Blog from './pages/Blog'
-import BlogPost from './pages/BlogPost'
-import NewBlog from './pages/NewBlog'
+import Agents from './pages/Agents'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import VerifyEmail from './pages/VerifyEmail'
@@ -46,16 +45,15 @@ import Account from './pages/Account'
 import Cart from './pages/Cart'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
-import ChatWidget from './components/ChatWidget'
 import './styles/shop.css'
 
 /**
- * SocketBridge — lives inside ConvoProvider so it can read chatSessionId,
- * then wraps children with SocketProvider scoped to that session.
+ * SocketBridge — reads persisted chat ``session_id`` (same as ``POST /api/patron/agent/chat/stream``)
+ * and scopes Socket.IO ``join_session`` / room ``sd_<id>`` for live agent pushes.
  */
 function SocketBridge({ children }: { children: React.ReactNode }) {
-  const { chatSessionId } = useConvo();
-  return <SocketProvider sessionId={chatSessionId}>{children}</SocketProvider>;
+  const { chatSessionId } = useConvo()
+  return <SocketProvider sessionId={chatSessionId}>{children}</SocketProvider>
 }
 
 /**
@@ -118,25 +116,26 @@ function UiActionExecutor() {
 }
 
 /**
- * ShopSocketSync — applies shop_sync payloads from the agent so React shop state
+ * ShopSocketSync — applies ``sd_stylist_message`` (action ``shop_sync``) from the patron agent so React shop state
  * matches backend shop_state whenever manage_sidebar / keyword_search runs.
  */
 function ShopSocketSync() {
   const { lastShopSync, clearShopSync } = useSocket();
-  const { setGender, setCategory, setQuery, setInputValue } = useShop();
+  const { gender, category, query, inputValue, setGender, setCategory, setQuery, setInputValue } = useShop();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
     if (!lastShopSync) return;
 
-    if ('gender' in lastShopSync) setGender(lastShopSync.gender ?? '');
-    if ('category' in lastShopSync) setCategory(lastShopSync.category ?? '');
-    if ('query' in lastShopSync) {
-      const q = lastShopSync.query ?? '';
-      setInputValue(q);
-      setQuery(q);
-    }
+    const merged = mergeShopSyncPayload(
+      { gender, category, query, inputValue },
+      lastShopSync,
+    );
+    setGender(merged.gender);
+    setCategory(merged.category);
+    setQuery(merged.query);
+    setInputValue(merged.inputValue);
 
     const has =
       !!(lastShopSync.gender?.trim() || lastShopSync.category?.trim() || lastShopSync.query?.trim());
@@ -148,7 +147,7 @@ function ShopSocketSync() {
   return null;
 }
 
-/** Floating chat is hidden on About — that page embeds the same widget inline. */
+/** Floating chat is hidden on About — that page can embed the widget inline if needed. */
 function AppChatWidget() {
   const { pathname } = useLocation()
   if (pathname === '/about') return null
@@ -174,8 +173,33 @@ function ShopLayout() {
 // Layout for account pages — uses AccountSidebar instead of ShopSidebar
 function AccountLayout() {
   const [activeSection, setActiveSection] = useState('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
   const { signOut } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const s = searchParams.get('section');
+    if (s === 'agent-api-keys') {
+      navigate('/agents?panel=api-keys', { replace: true });
+      return;
+    }
+    if (s && ACCOUNT_SECTION_IDS.includes(s)) {
+      setActiveSection(s);
+    }
+  }, [searchParams, navigate]);
+
+  const handleSectionChange = (id: string) => {
+    setActiveSection(id);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id === 'profile') {
+        next.delete('section');
+      } else {
+        next.set('section', id);
+      }
+      return next;
+    });
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -188,12 +212,12 @@ function AccountLayout() {
         <ResizableSidebar>
           <AccountSidebar
             activeSection={activeSection}
-            onSectionChange={setActiveSection}
+            onSectionChange={handleSectionChange}
             onSignOut={handleSignOut}
           />
         </ResizableSidebar>
         <div className="shop-main">
-          <Outlet context={{ activeSection, setActiveSection }} />
+          <Outlet context={{ activeSection, setActiveSection: handleSectionChange }} />
         </div>
       </div>
     </div>
@@ -207,7 +231,6 @@ function App() {
       <SocketBridge>
       <CartProvider>
       <ShopProvider>
-      <BlogProvider>
         <Router>
           <MonitorProvider>
           <UiActionExecutor />
@@ -241,16 +264,13 @@ function App() {
 
                 <Route path="/faq" element={<FAQ />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route path="/blog" element={<Blog />} />
-                <Route path="/blog/new" element={<NewBlog />} />
-                <Route path="/blog/:id" element={<BlogPost />} />
+                <Route path="/agents" element={<ProtectedRoute><Agents /></ProtectedRoute>} />
               </Routes>
             </main>
             <AppChatWidget />
           </div>
           </MonitorProvider>
         </Router>
-      </BlogProvider>
       </ShopProvider>
       </CartProvider>
       </SocketBridge>

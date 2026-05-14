@@ -1,4 +1,4 @@
-import { User, Package, Heart, Settings, Lock, FileText, CreditCard, MapPin, Bell, Shield, LogOut } from 'lucide-react'
+import { User, Package, Heart, Settings, Lock, FileText, CreditCard, MapPin, Bell, Shield, LogOut, MessageSquare } from 'lucide-react'
 import '../styles/shop.css'
 
 const ACCOUNT_SECTIONS = [
@@ -23,6 +23,7 @@ const ACCOUNT_SECTIONS = [
     icon: Shield,
     items: [
       { id: 'password', label: 'Change Password', icon: Lock },
+      { id: 'chat-logs', label: 'Chat logs', icon: MessageSquare },
       { id: 'sessions', label: 'Active Sessions', icon: FileText },
     ],
   },
@@ -35,6 +36,10 @@ const ACCOUNT_SECTIONS = [
     ],
   },
 ]
+
+export const ACCOUNT_SECTION_IDS: readonly string[] = ACCOUNT_SECTIONS.flatMap((g) =>
+  g.items.map((item) => item.id),
+)
 
 interface AccountSidebarProps {
   activeSection: string

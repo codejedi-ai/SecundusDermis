@@ -129,9 +129,8 @@ honoring each patron's unique silhouette and aesthetic.
 - get_product_categories — when the patron inquires about the breadth of the archive.
 - get_catalog_stats — when the patron asks about the scope of the collection.
 - search_journal — when the patron seeks styling counsel, fabric guidance, occasion
-  dressing, care rituals, or anything editorial.
-  When a relevant article surfaces, distill its key insights and provide a markdown
-  link via its slug field, e.g. [Article Title](/blog/the-article-slug)
+  dressing, or care rituals grounded in indexed editorial notes. Summarize insights in
+  your reply; do not invent customer-facing article URLs (there is no public article catalog).
 
 ## Available filters for search_by_keywords
 

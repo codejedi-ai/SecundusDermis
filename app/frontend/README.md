@@ -1,6 +1,6 @@
 # Secundus Dermis — Frontend
 
-React + Vite SPA for an AI-powered fashion storefront. Features infinite-scroll catalog, persistent AI chat widget, markdown blog, and resizable filter sidebar.
+React + Vite SPA for an AI-powered fashion storefront. Features infinite-scroll catalog, persistent AI chat widget, and resizable filter sidebar.
 
 ---
 
@@ -19,29 +19,37 @@ npm install
 npm run dev                   # Starts on http://localhost:5173
 ```
 
-The Vite dev server proxies `/api/*` → `http://localhost:8000` (backend).
+The Vite dev server proxies `/api/*` and `/socket.io` (WebSocket + polling) → `http://localhost:8000`, so the browser stays same-origin to Vite and the FastAPI process can run with `CORS_ENABLED=false` (see `./run.sh dev` and `app/backend/.env.example`).
+
+**Dev vs production:** A running **Vite dev server** means **development** — the UI is served from Vite, not from FastAPI. In **production**, this repo expects the **built SPA to be served by the backend** (`npm run build` writes `app/dist`, which FastAPI serves; see `./app/run.sh prod`), so the browser and API share one origin and you normally **leave `VITE_API_URL` unset** (REST uses relative `/api`).
 
 ### Build for Production
 
 ```bash
-npm run build                 # Output to ./dist
-npm run preview               # Preview production build
+cd frontend
+npm run build                 # Output to ../dist (FastAPI serves it)
+npm run preview               # Optional: Vite-only preview (not the same as prod)
 ```
+
+For production-like testing, use `./app/run.sh prod` so the API serves `app/dist` the same way deploy does.
 
 ---
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_API_URL` | `/api` | Backend API base URL (production) |
-| `VITE_IMAGE_URL` | `` | Backend image base URL (production) |
+[Vite exposes only variables prefixed with `VITE_`](https://vite.dev/guide/env-and-mode.html). They are embedded at **build time** (and when the dev server starts).
 
-Create `.env` or `.env.local`:
+| Variable | When unset | Description |
+|----------|------------|-------------|
+| `VITE_API_URL` | `API_BASE` is **`/api`** (relative to the page origin) | **Ignored during `npm run dev`** (`API_BASE` stays `/api`). For production builds only: optional full API base if SPA and API differ in origin. |
+| `VITE_BACKEND_URL` | See `src/lib/api-base.ts` | Origin for `/images` and other static mounts when they cannot be same-origin. |
+| `VITE_IMAGE_URL` | — | Same idea as `VITE_BACKEND_URL` (legacy alias). |
+
+Create `.env` or `.env.local` only when you need overrides. Example for a split-origin deployment (not the default “backend serves SPA” layout):
 
 ```env
-VITE_API_URL=https://your-backend.com
-VITE_IMAGE_URL=https://your-backend.com/images
+VITE_API_URL=https://your-api-host.example
+VITE_IMAGE_URL=https://your-api-host.example
 ```
 
 ---
@@ -76,9 +84,7 @@ VITE_IMAGE_URL=https://your-backend.com/images
 │  Other Routes                                            │
 │    ├─ / → Home.tsx                                       │
 │    ├─ /about → About.tsx                                 │
-│    ├─ /blog → Blog.tsx                                   │
-│    ├─ /blog/:slug → BlogPost.tsx                         │
-│    ├─ /blog/new → NewBlog.tsx (protected)                │
+│    ├─ /agents → Agents.tsx (protected; ?panel= for sidebar) │
 │    ├─ /faq → FAQ.tsx                                     │
 │    ├─ /contact → Contact.tsx                             │
 │    ├─ /signin → SignIn.tsx                               │
@@ -98,9 +104,7 @@ VITE_IMAGE_URL=https://your-backend.com/images
 | `About.tsx` | `/about` | Project description — AI agent playground explanation |
 | `Shop.tsx` | `/shop` | Infinite-scroll product grid with sidebar filters |
 | `Product.tsx` | `/product/:id` | Product detail page |
-| `Blog.tsx` | `/blog` | Journal article listing with category filter |
-| `BlogPost.tsx` | `/blog/:slug` | Single article view (renders markdown) |
-| `NewBlog.tsx` | `/blog/new` | Create new journal article (authenticated only) |
+| `Agents.tsx` | `/agents` (signed-in; `?panel=` sidebar) | Control panel: agent list, API keys, deployment status, chat threads |
 | `SignIn.tsx` | `/signin` | User login |
 | `SignUp.tsx` | `/signup` | User registration |
 | `Account.tsx` | `/account` | User account management (protected) |
@@ -117,6 +121,7 @@ VITE_IMAGE_URL=https://your-backend.com/images
 | `Header.tsx` | Navbar with logo, navigation links, live AI-controlled search input, cart count, user menu |
 | `ShopSidebar.tsx` | Resizable filter sidebar (gender, category) — defined once in `ShopLayout`, shared across `/shop` and `/product/:id` |
 | `ChatWidget.tsx` | Floating AI chat panel (bottom-right) — text + image upload, persists across page navigation |
+| `AgentApiKeysPanel.tsx` | Patron `sdag_…` mint/revoke + in-browser key storage (used on `/agents?panel=api-keys`) |
 | `Footer.tsx` | Site footer with links |
 | `ProtectedRoute.tsx` | Auth guard wrapper for protected pages |
 | `ScrollToTop.tsx` | Scroll-to-top on route change |
@@ -312,7 +317,7 @@ src/styles/
 ├── shop.css
 ├── product.css
 ├── about.css
-├── blog.css
+├── agents.css
 ├── chat.css
 ├── cart.css
 ├── auth.css
@@ -343,10 +348,10 @@ This ensures the sidebar never unmounts or re-renders on navigation between shop
 
 ```tsx
 <Route
-  path="/blog/new"
+  path="/account"
   element={
     <ProtectedRoute>
-      <NewBlog />
+      <Account />
     </ProtectedRoute>
   }
 />
@@ -367,16 +372,22 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
-        rewrite: path => path.replace(/^\/api/, ''),
+        changeOrigin: true,
+      },
+      '/socket.io': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true,
       },
       '/images': {
         target: 'http://localhost:8000',
+        changeOrigin: true,
       },
     },
   },
   build: {
-    outDir: 'dist',
-    sourcemap: false,
+    outDir: '../dist',
+    emptyOutDir: true,
   },
 })
 ```
@@ -496,9 +507,7 @@ frontend/
     │   ├── About.tsx
     │   ├── Shop.tsx
     │   ├── Product.tsx
-    │   ├── Blog.tsx
-    │   ├── BlogPost.tsx
-    │   ├── NewBlog.tsx
+    │   ├── Agents.tsx
     │   ├── SignIn.tsx
     │   ├── SignUp.tsx
     │   ├── Account.tsx
@@ -517,7 +526,7 @@ frontend/
         ├── shop.css
         ├── product.css
         ├── about.css
-        ├── blog.css
+        ├── agents.css
         ├── chat.css
         └── ...
 ```
@@ -545,7 +554,7 @@ npm run lint:fix      # ESLint auto-fix
 | **Plain CSS (no framework)** | Full control over editorial boutique aesthetic; no framework purge config |
 | **Vite** | HMR for fast iteration; fast builds; simple config |
 | **TypeScript** | Catches API contract mismatches early; better IDE support |
-| **react-markdown** | Render journal articles from markdown; no CMS dependency |
+| **react-markdown** | Render markdown in the chat widget where needed |
 | **Lucide React** | Consistent, lightweight icon set |
 
 ---

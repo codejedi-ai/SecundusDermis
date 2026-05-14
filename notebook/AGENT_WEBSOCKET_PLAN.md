@@ -1,5 +1,7 @@
 # WebSocket Agent Integration — Planning Document
 
+> **Note (2026):** For the **shipped** Secundus Dermis integration (internal agent secret, `/internal/agent/*`, Socket.IO rooms `sd_*`, optional `SD_SOCKETIO_EMIT` on the standalone agent), see repository root **`AGENT_MANIFEST.md`** and backend **`GET /agent-manifest.md`**. This file remains a longer-term roadmap for external eval agents (NanoClaw, OpenClaw, etc.).
+
 > **Status:** Brainstorm / Future Roadmap
 > **No code has been written yet.** This document captures the intent, design thinking, and open questions for connecting external AI agents (NanoClaw, OpenClaw, etc.) to the Secundus Dermis demo environment via WebSocket.
 
@@ -157,7 +159,7 @@ Agent                          Server
 Since this is a demo/playground, auth can be lightweight:
 
 - **Option A — Static token:** `AGENT_TOKENS` env var holds a comma-separated list of allowed tokens. Simple and zero-dependency.
-- **Option B — Admin-issued tokens:** Same `POST /journal` pattern — admin key creates a new agent token, stored in memory.
+- **Option B — Admin-issued tokens:** Same session-bound API pattern — admin key creates a new agent token, stored in memory.
 - **Option C — Open (no auth):** For local dev / fully public demos, skip auth entirely and just rate-limit by IP.
 
 Recommendation: start with **Option A** for NanoClaw/OpenClaw integration, add Option B when more agents need independent identity.

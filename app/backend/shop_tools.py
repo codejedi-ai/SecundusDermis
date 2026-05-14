@@ -269,3 +269,25 @@ def keyword_search(
             break
 
     return results
+
+
+def build_catalog_stats(
+    catalog: list[dict],
+    *,
+    embedding_model: str,
+    embedding_dim: int,
+    search_mode: str,
+    agent_proxy: bool,
+) -> dict[str, Any]:
+    """Aggregate catalog dimensions for GET /catalog/stats (grounded copy for clients)."""
+    cats = sorted({str(p["category"]) for p in catalog if p.get("category")})
+    genders = sorted({str(p["gender"]) for p in catalog if p.get("gender")})
+    return {
+        "total_products": len(catalog),
+        "categories": cats,
+        "genders": genders,
+        "embedding_model": embedding_model,
+        "embedding_dim": embedding_dim,
+        "search_mode": search_mode,
+        "agent_proxy": agent_proxy,
+    }

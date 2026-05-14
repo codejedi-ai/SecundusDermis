@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Copy, Check } from 'lucide-react';
-
-const API_BASE = '/api';
+import { API_BASE } from '../lib/api-base';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();

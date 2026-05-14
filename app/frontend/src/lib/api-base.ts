@@ -1,7 +1,20 @@
 /**
  * Central API / asset bases for the browser.
  *
- * **API** — default `/api` (Vite + nginx proxy to FastAPI).
+ * **Origin vs path** — Between environments, only the **origin** (scheme + host + port; in local
+ * dev often “the IP”) changes. Paths such as ``/api/...`` stay fixed; the SPA uses relative ``/api``.
+ *
+ * **Dev vs prod**
+ * - **Vite dev server** (`npm run dev`): ``API_BASE`` is always ``PUBLIC_HTTP_API_PREFIX`` (``VITE_API_URL``
+ *   ignored for JSON). Vite forwards ``/api/...`` unchanged to FastAPI — same paths as ``run.sh prod`` / nginx + backend.
+ * - **Production**: the built SPA is served **by the backend** (``app/dist`` on FastAPI, or nginx
+ *   in front of the same origin). Leave ``VITE_API_URL`` unset so ``API_BASE`` stays ``/api`` on
+ *   that host. Only set ``VITE_API_URL`` to a full URL when the HTML is on a *different* origin
+ *   than the API (unusual for this project).
+ *
+ * **``VITE_API_URL``** — optional Vite env (baked in at ``npm run build``). If set, it becomes the
+ *   base string for REST calls (e.g. ``https://api.example.com`` or ``http://localhost:8000``).
+ *   If unset/empty, ``API_BASE`` is ``/api`` (relative to whatever page is serving the SPA).
  *
  * **Images** (`/images/*`, `/uploads/*` from API) — should load from the FastAPI host.
  * - Set `VITE_BACKEND_URL` (e.g. `http://localhost:8000`) so `<img>` URLs hit the server directly.
@@ -18,18 +31,44 @@ const DEFAULT_DEV_BACKEND = 'http://localhost:8000';
 const isBrowser = typeof window !== 'undefined';
 const isLocalHostPage = isBrowser && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 
+/** Same path prefix as ``PUBLIC_HTTP_API_PREFIX`` in ``app/backend/config.py`` (``APIRouter`` prefix). */
+export const PUBLIC_HTTP_API_PREFIX = '/api' as const;
+
 function normalizeApiBase(): string {
-  if (!VITE_API) return '/api';
+  // Vite dev server: always same-origin `/api` so requests hit the proxy (FastAPI can use CORS_ENABLED=false).
+  // A local `VITE_API_URL=http://localhost:8000` would otherwise bypass the proxy and fail with NetworkError.
+  if (import.meta.env.DEV) {
+    return PUBLIC_HTTP_API_PREFIX;
+  }
+  if (!VITE_API) return PUBLIC_HTTP_API_PREFIX;
   // If the build is configured for localhost but page is remote (e.g. ngrok),
   // force same-origin API so requests do not point to the viewer's localhost.
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_API) && !isLocalHostPage) {
-    return '/api';
+    return PUBLIC_HTTP_API_PREFIX;
   }
   return VITE_API;
 }
 
-/** Relative `/api` (proxied) or full URL to the API. */
+/** Relative `/api` (proxied in dev) or full URL to the API (production split-origin only). */
 export const API_BASE = normalizeApiBase();
+
+/**
+ * Origin for ``socket.io-client`` (path stays ``/socket.io``).
+ * When ``API_BASE`` is relative, use the page origin so dev traffic goes through the Vite WebSocket proxy.
+ */
+export function socketIoOrigin(): string {
+  if (!isBrowser) {
+    return '';
+  }
+  if (API_BASE.startsWith('/')) {
+    return window.location.origin;
+  }
+  try {
+    return new URL(API_BASE).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
 
 function computeImageBase(): string {
   if (VITE_IMG) {

@@ -3,6 +3,7 @@
  * Session is stored in cookies for persistence across browser sessions.
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { parseApiErrorDetail } from './api-error';
 import { API_BASE } from './api-base';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -143,45 +144,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password, name }),
       credentials: 'include',
     });
-    const data = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
     if (!res.ok) {
-      const d = data.detail;
-      const msg = typeof d === 'string' ? d : 'Registration failed';
+      const msg = parseApiErrorDetail(data, raw, 'Registration failed');
       throw new Error(msg);
     }
     return {
-      message: data.message || 'Check your email to verify your account.',
-      email: data.email,
-      name: data.name ?? null,
-      verificationToken: data.verification_token ?? null,
-      verifyUrl: data.verify_url ?? null,
+      message: (data.message as string) || 'Check your email to verify your account.',
+      email: data.email as string,
+      name: (data.name as string | null) ?? null,
+      verificationToken: (data.verification_token as string | null) ?? null,
+      verifyUrl: (data.verify_url as string | null) ?? null,
     };
   };
 
   const signIn = async (email: string, password: string) => {
+    const em = email.trim();
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: em, password }),
       credentials: 'include',
     });
-    const body = await res.json().catch(() => ({ detail: 'Invalid credentials' }));
-    if (!res.ok) {
-      const d = body.detail;
-      const msg =
-        typeof d === 'string'
-          ? d
-          : Array.isArray(d)
-            ? d.map((x: { msg?: string }) => x.msg || '').filter(Boolean).join(' ')
-            : 'Invalid email or password';
-      throw new Error(msg || 'Invalid email or password');
+    const raw = await res.text();
+    let body: Record<string, unknown> = {};
+    try {
+      body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      body = {};
     }
-    const data = body as Session;
+    if (!res.ok) {
+      const fallback =
+        res.status === 403
+          ? 'Please verify your email before signing in. Check your inbox for the verification link.'
+          : 'Sign in failed. Check your email and password.';
+      throw new Error(parseApiErrorDetail(body, raw, fallback));
+    }
+    const data = body as unknown as Session;
     // Store session in both cookie and state for persistence
     setCookie(SESSION_COOKIE, data.session_id, 30); // 30 days
     setSession(data);
     setUser(data.user);
-    
+
     // Sync any local messages to backend after login
     syncLocalMessagesToBackend(data.session_id, data.user.email);
   };

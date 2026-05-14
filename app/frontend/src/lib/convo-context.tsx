@@ -6,13 +6,28 @@
  * - Logged-in users: messages are persisted to the backend (GET/POST/DELETE /conversations)
  *   and cached in localStorage as a fast-load fallback.
  * - Anonymous users: localStorage only.
- * - `chatSessionId` is the ADK session ID sent to POST /chat. It is scoped per user
- *   so each account gets its own continuous agent memory.
+ * - `chatSessionId` is the `session_id` for `POST /api/patron/agent/chat/stream` and Socket.IO
+ *   `join_session` / `sd_<id>`. The user picks a default on the Agents page (persisted in
+ *   `sd_stylist_session_id`); presets live in `stylist-session.ts`. Account transcripts
+ *   still use the auth `session-id` header on `/conversations`, not this value.
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './auth-context';
 import * as chatApi from '../services/chatApi';
+import * as fashionApi from '../services/fashionApi';
+import {
+  loadPersistedStylistSessionId,
+  savePersistedStylistSessionId,
+  sanitizeStylistSessionId,
+} from './stylist-session';
+import { getPatronAgentChatApiKey } from './patron-agent-chat-key';
+
+/** Same as FastAPI `ChatRequest.session_id` default — used as initial preset. */
+export const DEFAULT_STYLIST_SESSION_ID = 'default';
+
+/** Dispatch on `window` to open the floating chat. */
+export const SD_CHAT_OPEN_EVENT = 'sd:chat:open';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -29,52 +44,70 @@ export interface ConvoMessage {
 interface ConvoContextType {
   messages: ConvoMessage[];
   chatSessionId: string;
+  /** Persisted chat `session_id` (chosen on /agents). */
+  setStylistSessionId: (id: string) => void;
   addMessage: (msg: Omit<ConvoMessage, 'id' | 'timestamp'>) => void;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
+const ATTACHE_WELCOME =
+  'Welcome to Secundus Dermis. I am your personal attaché.\n\n' +
+  'Shall we begin with your preferred aesthetic, or would you like me to curate a selection from the archive? ' +
+  'You may also present an image and I will identify pieces that harmonize with your vision.';
+
+const PATRON_KEY_SETUP_NOTE =
+  '\n\nTo send messages, save a patron `sdag_…` key: **AI agents** → **API keys** → **Save for in-browser chat.**';
+
+/** First assistant message: attaché welcome, plus key setup only when this browser has no `sdag_…` yet. */
+export function buildInitialConvoMessage(): ConvoMessage {
+  const hasKey = Boolean(getPatronAgentChatApiKey()?.trim());
+  return {
+    id: 'init',
+    role: 'assistant',
+    content: hasKey ? ATTACHE_WELCOME : ATTACHE_WELCOME + PATRON_KEY_SETUP_NOTE,
+    timestamp: 0,
+  };
+}
+
+/** @deprecated Use ``buildInitialConvoMessage()`` — kept so saved threads that reference the id stay valid. */
 export const INITIAL_MESSAGE: ConvoMessage = {
   id: 'init',
   role: 'assistant',
-  content:
-    "Welcome to Secundus Dermis. I am your personal attaché.\n\n" +
-    "Shall we begin with your preferred aesthetic, or would you like me to curate a selection from the archive? " +
-    "You may also present an image and I will identify pieces that harmonize with your vision.",
+  content: ATTACHE_WELCOME,
   timestamp: 0,
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
 
-function lsSessionKey(userEmail?: string) {
-  return userEmail ? `sd_chat_session_${userEmail}` : 'sd_chat_session_anon';
-}
-
 function lsMessagesKey(userEmail?: string) {
   return userEmail ? `sd_chat_messages_${userEmail}` : 'sd_chat_messages_anon';
 }
 
-function loadOrCreateChatSessionId(userEmail?: string): string {
-  const key = lsSessionKey(userEmail);
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) return stored;
-  } catch { /* ignore */ }
-  const id = crypto.randomUUID();
-  try { localStorage.setItem(key, id); } catch { /* ignore */ }
-  return id;
+/** Drop legacy assistant bubbles that only repeated the patron-key banner (now folded into ``init``). */
+function stripLegacyPatronKeyDuplicates(msgs: ConvoMessage[]): ConvoMessage[] {
+  return msgs.filter((m) => {
+    if (m.role !== 'assistant') return true;
+    const c = m.content.trim();
+    if (c.startsWith('In-browser stylist requires a patron')) return false;
+    return true;
+  });
 }
 
 /** Load messages from localStorage. Strips blob URLs and products (not storable). */
 function loadLocalMessages(userEmail?: string): ConvoMessage[] {
   try {
     const raw = localStorage.getItem(lsMessagesKey(userEmail));
-    if (!raw) return [INITIAL_MESSAGE];
+    if (!raw) return [buildInitialConvoMessage()];
     const parsed: ConvoMessage[] = JSON.parse(raw);
-    const safe = parsed.map(m => ({ ...m, previewUrl: undefined, products: undefined }));
-    return safe.length > 0 ? safe : [INITIAL_MESSAGE];
+    const safe = stripLegacyPatronKeyDuplicates(
+      parsed.map((m) => ({ ...m, previewUrl: undefined, products: undefined })),
+    );
+    const initFresh = buildInitialConvoMessage();
+    const normalized = safe.map((m) => (m.id === 'init' ? { ...m, content: initFresh.content } : m));
+    return normalized.length > 0 ? normalized : [initFresh];
   } catch {
-    return [INITIAL_MESSAGE];
+    return [buildInitialConvoMessage()];
   }
 }
 
@@ -97,17 +130,21 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ConvoMessage[]>(() =>
     loadLocalMessages(userEmail),
   );
-  const [chatSessionId, setChatSessionId] = useState(() =>
-    loadOrCreateChatSessionId(userEmail),
-  );
+  const [stylistSessionId, setStylistSessionIdState] = useState(loadPersistedStylistSessionId);
 
-  // When the authenticated user changes, switch to their session + history.
+  const setStylistSessionId = useCallback((id: string) => {
+    const s = sanitizeStylistSessionId(id);
+    setStylistSessionIdState(s);
+    savePersistedStylistSessionId(s);
+  }, []);
+
+  const chatSessionId = stylistSessionId;
+
+  // When the authenticated user changes, reload their transcript (stylist session is unchanged).
   useEffect(() => {
-    setChatSessionId(loadOrCreateChatSessionId(userEmail));
-
     if (authSessionId) {
       // Logged in — load history from backend, fall back to localStorage cache.
-      chatApi
+      fashionApi
         .getConversation(authSessionId)
         .then((stored: any[]) => {
           if (stored.length === 0) {
@@ -118,7 +155,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
             local
               .filter(m => m.id !== 'init')
               .forEach(m =>
-                chatApi
+                fashionApi
                   .appendConversationMessage(authSessionId, {
                     role: m.role,
                     content: m.content,
@@ -148,6 +185,23 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail, authSessionId]);
 
+  useEffect(() => {
+    const syncInit = () => {
+      setMessages((prev) => {
+        const i = prev.findIndex((m) => m.id === 'init');
+        if (i === -1) return prev;
+        const latest = buildInitialConvoMessage();
+        if (prev[i].content === latest.content) return prev;
+        const next = [...prev];
+        next[i] = { ...prev[i], content: latest.content };
+        saveLocalMessages(next, userEmail);
+        return next;
+      });
+    };
+    window.addEventListener('sd:patron-chat-key-changed', syncInit);
+    return () => window.removeEventListener('sd:patron-chat-key-changed', syncInit);
+  }, [userEmail]);
+
   // ── addMessage ─────────────────────────────────────────────────────────
 
   const addMessage = (msg: Omit<ConvoMessage, 'id' | 'timestamp'>) => {
@@ -165,7 +219,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
 
     // Sync to backend only when authenticated
     if (authSessionId) {
-      chatApi
+      fashionApi
         .appendConversationMessage(authSessionId, {
           role: full.role,
           content: full.content,
@@ -183,11 +237,17 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  return (
-    <ConvoContext.Provider value={{ messages, chatSessionId, addMessage }}>
-      {children}
-    </ConvoContext.Provider>
+  const value = useMemo(
+    () => ({
+      messages,
+      chatSessionId,
+      setStylistSessionId,
+      addMessage,
+    }),
+    [messages, chatSessionId, setStylistSessionId, addMessage],
   );
+
+  return <ConvoContext.Provider value={value}>{children}</ConvoContext.Provider>;
 }
 
 export function useConvo() {

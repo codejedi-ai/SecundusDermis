@@ -70,6 +70,14 @@ npm run dev                   # starts on http://localhost:5173
 
 The Vite dev server proxies `/api/*` → `localhost:8000`.
 
+### Continuous integration
+
+GitHub Actions **Backend CI** (`.github/workflows/backend-ci.yml`) runs `pytest .github/tests/unit` and, when the repository secret **`KAGGLE_API_TOKEN`** is set, downloads the DeepFashion dataset into `app/data/kaggle` (cached between runs). Fork PRs do not receive that secret; the download step is skipped there.
+
+**Frontend CI** (`.github/workflows/frontend-ci.yml`) runs Vitest, then `npm run build` (writes the SPA to `app/dist/`), then pytest on `.github/tests/production_dist` so the **built bundle matches what the FastAPI app serves in production** (`/` → `index.html`, `/assets/*` static mount). That path is not validated by backend-only CI because `app/dist` is produced by the Vite build, not by Python.
+
+For a full single-process smoke test locally: `npm run build` in `app/frontend`, then start the backend; open `http://localhost:8000/` (not only the Vite dev port) to confirm the hosted SPA and API share one origin.
+
 ### Environment variables
 
 Paths below **`DATA_DIR`** are derived in `app/backend/config.py` (do not set legacy `IMAGES_DIR` / `DATASET_ROOT` for the main API).
@@ -81,7 +89,7 @@ AUTH_DATA_DIR=/absolute/path/to/SecundusDermis/app/data   # optional; must match
 
 GEMINI_API_KEY=...                               # required — LLM + VLM
 KAGGLE_API_TOKEN=KGAT_...                        # required — dataset download
-ADMIN_KEY=change-me                              # protects POST /journal
+ADMIN_KEY=change-me                              # optional — reserved for future admin-only routes
 AGENT_MODEL=gemini-3.1-pro-preview-customtools
 VLM_MODEL=gemini-3.1-pro-preview
 ```
@@ -97,7 +105,7 @@ VLM_MODEL=gemini-3.1-pro-preview
 │  /           About — what this project is                │
 │  /shop       Infinite-scroll catalog + sidebar filters   │
 │  /product/:id  Product detail                            │
-│  /blog       Editorial journal                           │
+│  /agents     AI agents hub (signed-in only: keys, sockets, deployment) │
 │  ChatWidget  Floating AI chat, persists across pages     │
 │  Header      Navbar with live AI-controlled search bar   │
 └────────────────────────┬─────────────────────────────────┘
@@ -116,7 +124,7 @@ VLM_MODEL=gemini-3.1-pro-preview
 │                              └─ colour histogram re-rank │
 │                                                          │
 │  /catalog/*  ── pure in-memory filtering (zero API cost) │
-│  /journal/*  ── markdown files served as JSON            │
+│  /api/conversations  ── signed-in chat transcript sync (JSON)              │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -171,7 +179,7 @@ The histogram only **orders** what keyword search already found — it never ret
 | **Routing** | React Router nested routes + `<Outlet>` | `ShopLayout` defines the sidebar once; `/shop` and `/product/:id` are nested inside it — sidebar never unmounts or re-renders on navigation |
 | **Styling** | Plain CSS modules per component | Full control over the editorial boutique aesthetic; no framework purge config; variables in `variables.css` for theming |
 | **Dataset** | DeepFashion Multimodal (Kaggle) | 12,278 labelled images with captions across 16 categories for MEN + WOMEN; auto-downloaded via `KAGGLE_API_TOKEN` on first server start |
-| **Journal** | Markdown + YAML frontmatter | Version-controlled, human-editable, agent-searchable; new posts via `POST /journal` or the `/blog/new` UI |
+| **Chat persistence** | `GET/POST /api/conversations` | Signed-in stylist widget history stored per session for continuity across devices |
 
 ---
 
@@ -243,7 +251,7 @@ Conversational agent. Routes through Google ADK, calls tools as needed, returns 
 | `search_by_keywords` | `(keywords, gender?, category?, max_price?, n_results?)` | Primary product retrieval. Called for all product queries. |
 | `get_catalog_stats` | `()` | Total product count, all categories, all genders. |
 | `get_product_categories` | `()` | Categories grouped by gender. |
-| `search_journal` | `(query)` | Searches editorial articles. Returns title, excerpt, and markdown link `/blog/{slug}`. |
+| `search_journal` | `(query)` | Searches indexed editorial notes for the stylist; summarize in reply (no public article URLs). |
 
 ---
 
@@ -340,37 +348,19 @@ Single product by ID.
 
 ---
 
-### `GET /journal`
+### `GET /api/conversations`
 
-List all posts (no body). Params: `category`, `featured=true`.
+Returns `{ "messages": [...] }` for the authenticated session (stylist chat transcript).
 
-### `GET /journal/{slug}`
+### `POST /api/conversations`
 
-Full post including markdown body.
+Append one message `{ role, content, timestamp }` (used by the chat widget when signed in).
 
-### `POST /journal`
+### `DELETE /api/conversations`
 
-Publish a new post. Requires `X-Admin-Key` header.
+Clears stored messages for the session.
 
-```bash
-curl -X POST http://localhost:8000/journal \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: your-admin-key" \
-  -d '{
-    "title": "The Case for Natural Fabrics",
-    "excerpt": "Why linen and cotton outperform synthetics year-round.",
-    "author": "Editorial",
-    "date": "2026-03-28",
-    "read_time": "4 min",
-    "category": "Style",
-    "tags": ["fabric", "basics"],
-    "featured": false,
-    "image": "",
-    "body": "# The Case for Natural Fabrics\n\n..."
-  }'
-```
-
-### `GET /health`
+### `GET /api/health`
 
 ```json
 { "status": "healthy", "catalog_size": 12278, "search_mode": "keyword + VLM histogram" }
@@ -423,7 +413,7 @@ app/frontend/
 │   │   ├── About.tsx             # Root — describes the AI playground
 │   │   ├── Shop.tsx              # Infinite-scroll product grid
 │   │   ├── Product.tsx           # Product detail
-│   │   ├── Blog.tsx / BlogPost.tsx / NewBlog.tsx
+│   │   ├── Agents.tsx (AI agents hub)                     │
 │   │   └── FAQ.tsx / Contact.tsx
 │   ├── services/
 │   │   └── fashionApi.ts         # Typed API client

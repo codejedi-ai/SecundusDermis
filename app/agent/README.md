@@ -1,22 +1,26 @@
 # Secundus stylist agent (standalone process)
 
-This package runs the **Gemini ReAct stylist loop** outside the FastAPI backend. It talks to the API over **HTTP** (`/internal/agent/*`) for catalog search, sidebar state, RAG context, and **Socket.IO fan-out** (`POST /internal/agent/emit` pushes `shop_sync` / `catalog_results` into the patron’s room).
+This package runs the **Gemini ReAct stylist loop** outside the FastAPI backend. It talks to the API over **HTTP** (`/internal/agent/*`) for catalog search, sidebar state, and RAG context. Patron-room fan-out uses **`POST /internal/agent/emit`** by default, or a **Socket.IO** connection when **`SD_SOCKETIO_EMIT=1`** (same auth as the browser agent path: `agent_secret` on connect, then `agent_emit` events — see repo root **`AGENT_MANIFEST.md`** and backend **`GET /api/agent-manifest.md`**).
 
 ## Why separate?
 
 - The backend keeps **data**, **Chroma**, **sessions**, and **Socket.IO rooms**.
-- The agent process holds **only** `GEMINI_API_KEY` for inference and streams results back through the same SSE contract as in-process mode.
+- The agent process holds **only** the Gemini API key for inference (see `agent_gemini.py`) and streams results back through the same SSE contract as in-process mode.
 
 ## Environment
 
+Copy **`app/agent/.env.example`** → **`app/agent/.env`** for a deployment where **no Gemini variables** live on the API host. Shared dev setups often keep `AGENT_INTERNAL_SECRET` in `app/backend/.env` only; `agent_gemini.load_agent_environment()` loads backend `.env` first, then merges **`app/agent/.env` for non-empty keys only** (so a blank `AGENT_INTERNAL_SECRET=` placeholder does not wipe the backend value).
+
 Shared secret (must match backend `app/backend`):
 
-- `AGENT_INTERNAL_SECRET` — required on the backend to enable `/internal/agent/*` and on the agent to call those routes and to accept proxied `POST /v1/chat/stream`.
+- `AGENT_INTERNAL_SECRET` — required in production for `/internal/agent/*` and proxied `POST /v1/chat/stream`. If unset, backend and agent both read `{DATA_DIR}/.sd_agent_internal_secret` (auto-created under `app/data` in local dev).
 
-Agent-only:
+Agent-only (Gemini — resolved in **`agent_gemini.py`**):
 
-- `GEMINI_API_KEY` — Gemini client runs in this process.
-- `BACKEND_URL` — default `http://127.0.0.1:8000` (no `/api` prefix; use the same origin the browser would use for Socket.IO when testing).
+- `GEMINI_API_KEY` — preferred.
+- `GOOGLE_API_KEY` — optional alias if your host only sets this name.
+- `BACKEND_URL` — default `http://127.0.0.1:8000` (see **`agent_runtime.py`**).
+- `SD_SOCKETIO_EMIT` — optional `1` / `true` / `yes`: connect to the backend with **Socket.IO** as role `agent` and push `shop_sync` / `catalog_results` via `agent_emit` (falls back to HTTP emit if connect fails).
 
 Backend (optional split mode):
 
@@ -63,6 +67,9 @@ Google **ADK** helpers live here for experiments or a separate orchestrator: `cr
 
 | Path | Role |
 |------|------|
+| `agent_gemini.py` | Dotenv load order, resolve `GEMINI_API_KEY` / `GOOGLE_API_KEY`, build `genai.Client` |
+| `agent_runtime.py` | `BACKEND_URL` and boolean env helpers (no API keys) |
+| `.env.example` | Agent-only env template (never commit `.env`) |
 | `config/soul.md` | Atelier persona appended to `system_stylist` |
 | `agent_prompts.py` | Load `soul.md` and merge into prompt dict |
 | `secundus_agent/main.py` | FastAPI: `POST /v1/chat/stream`, `GET /health` |

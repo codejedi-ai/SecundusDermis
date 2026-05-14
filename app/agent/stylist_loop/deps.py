@@ -9,11 +9,26 @@ from typing import Any, Optional, Protocol, runtime_checkable
 class StylistAgentDeps(Protocol):
     """Backend capabilities the stylist loop needs — implemented in-process or via HTTP/WebSocket."""
 
-    async def emit_shop_sync(self, ws_session_id: Optional[str], shop_state: dict[str, Any]) -> None: ...
+    async def emit_shop_sync(
+        self,
+        ws_session_id: Optional[str],
+        shop_state: dict[str, Any],
+        *,
+        source: str = "tool",
+        tool: Optional[str] = None,
+    ) -> None: ...
 
     async def emit_catalog_results(
-        self, ws_session_id: Optional[str], products: list[dict[str, Any]], mode: str
+        self,
+        ws_session_id: Optional[str],
+        products: list[dict[str, Any]],
+        mode: str,
+        *,
+        source: str = "agent_reply",
+        tool: Optional[str] = None,
     ) -> None: ...
+
+    async def emit_stylist_ws(self, ws_session_id: Optional[str], envelope: dict[str, Any]) -> None: ...
 
     def keyword_search(
         self,
@@ -41,3 +56,11 @@ class StylistAgentDeps(Protocol):
         mime_type: str,
         ws_session_id: Optional[str],
     ) -> str: ...
+
+    async def websocket_channel(
+        self,
+        host: str,
+        content: dict[str, Any],
+        port: Optional[int] = None,
+        agent_secret: Optional[str] = None,
+    ) -> dict[str, Any]: ...

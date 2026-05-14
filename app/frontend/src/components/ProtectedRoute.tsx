@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { useAuth } from '../lib/auth-context'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -9,6 +9,7 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
   const { user, isLoading } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -24,7 +25,7 @@ const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
       return <>{fallback}</>
     }
 
-    return <Navigate to="/sign-in" replace />
+    return <Navigate to="/sign-in" replace state={{ from: location }} />
   }
 
   return <>{children}</>

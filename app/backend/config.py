@@ -63,22 +63,67 @@ JOURNAL_DIR   = DATA_DIR / "journal"
 UPLOADS_DIR   = DATA_DIR / "uploads"
 PROMPTS_FILE  = DATA_DIR / "prompts.json"
 
-# ── AI Model Configuration ────────────────────────────────────────────────────
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# ── AI Model Configuration (used by documentation; Gemini runs on ``app/agent`` only) ──
 MODEL          = os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview-customtools")
 EMBED_MODEL    = "gemini-embedding-2-preview"
 EMBEDDING_DIM  = 3072
 THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low")
 
 # ── Standalone stylist agent (optional) ─────────────────────────────────────
-# When AGENT_SERVICE_URL is set, POST /chat/stream is proxied to that service.
+# When AGENT_SERVICE_URL is set, patron ``POST /api/patron/agent/chat/stream`` is proxied to that service.
 # The agent process uses AGENT_INTERNAL_SECRET + BACKEND_URL to call /internal/agent/* and push Socket.IO.
-AGENT_INTERNAL_SECRET = os.getenv("AGENT_INTERNAL_SECRET", "").strip()
+from agent_secret_file import read_or_create_agent_internal_secret
+
+AGENT_INTERNAL_SECRET = read_or_create_agent_internal_secret(DATA_DIR)
 AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "").strip()
 
 # ── Email (Gmail SMTP, optional) ─────────────────────────────────────────────
 # Password reset links use this origin (no trailing slash).
 FRONTEND_PUBLIC_URL = os.getenv("FRONTEND_PUBLIC_URL", "http://localhost:5173").rstrip("/")
+
+# Public URL prefix for patron JSON routes (``APIRouter`` prefix). Keep in sync with ``PUBLIC_HTTP_API_PREFIX`` in ``app/frontend/src/lib/api-base.ts``.
+PUBLIC_HTTP_API_PREFIX = "/api"
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None or not str(v).strip():
+        return default
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+# When ``False``, FastAPI does not mount ``CORSMiddleware``. Use with the Vite dev proxy so the
+# browser talks same-origin to ``/api`` only (no cross-origin HTTP). Production or direct-to-API
+# browsers should set ``CORS_ENABLED=true`` (default) and tune origins below.
+CORS_ENABLED = _env_bool("CORS_ENABLED", True)
+
+# When CORS is on: never use ``["*"]`` with credentialed fetches (see project notes / prior bug).
+# Extra comma-separated origins (scheme+host+port), merged with FRONTEND_PUBLIC_URL.
+CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+if "CORS_ALLOW_ORIGIN_REGEX" in os.environ:
+    _cors_re = os.environ["CORS_ALLOW_ORIGIN_REGEX"].strip()
+    CORS_ALLOW_ORIGIN_REGEX: str | None = _cors_re or None
+else:
+    CORS_ALLOW_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+
+def cors_allow_origins() -> list[str]:
+    """Explicit browser origins for credentialed CORS (never ``*``)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    base = FRONTEND_PUBLIC_URL.rstrip("/")
+    if base:
+        seen.add(base)
+        out.append(base)
+    for part in CORS_ALLOWED_ORIGINS.split(","):
+        o = part.strip().rstrip("/")
+        if o and o not in seen:
+            seen.add(o)
+            out.append(o)
+    if not out:
+        out.append("http://localhost:5173")
+    return out
+
 
 # ── Initialization ────────────────────────────────────────────────────────────
 def init_directories():
