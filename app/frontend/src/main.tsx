@@ -252,7 +252,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/about" element={<About />} />
 
-                {/* Patron sign-in surfaces — entire subtree off when AUTH_ENABLED=false */}
+                {/* Patron sign-in surfaces — off in ephemeral demo mode (AUTH_ENABLED=false) */}
                 <Route element={<PatronAuthOutlet />}>
                   <Route path="/sign-in" element={<SignIn />} />
                   <Route path="/sign-up" element={<SignUp />} />

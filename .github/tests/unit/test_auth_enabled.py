@@ -26,7 +26,9 @@ async def test_auth_config_reports_disabled(auth_disabled_app):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.get("/api/auth/config")
     assert r.status_code == 200
-    assert r.json()["enabled"] is False
+    body = r.json()
+    assert body["enabled"] is False
+    assert body["ephemeral_mode"] is True
 
 
 @pytest.mark.asyncio

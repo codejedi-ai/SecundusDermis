@@ -868,8 +868,8 @@ async def upload_image_retired():
 
 @api_router.get("/auth/config")
 async def auth_config():
-    """Whether patron sign-in routes are active (SPA hides auth UI when ``enabled`` is false)."""
-    return {"enabled": config.AUTH_ENABLED}
+    """Whether patron sign-in is active and whether the app is in ephemeral demo mode."""
+    return {"enabled": config.AUTH_ENABLED, "ephemeral_mode": config.EPHEMERAL_MODE}
 
 
 @api_router.post("/auth/register", response_model=RegisterResponse, status_code=201)

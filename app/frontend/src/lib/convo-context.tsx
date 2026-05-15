@@ -5,7 +5,9 @@
  *
  * - Logged-in users: messages are persisted to the backend (GET/POST/DELETE /conversations)
  *   and cached in localStorage as a fast-load fallback.
- * - Anonymous users: localStorage only.
+ * - Anonymous users (sign-in enabled): localStorage only.
+ * - **Ephemeral mode** (``EPHEMERAL_MODE``): in-memory chat only — fresh welcome each page load;
+ *   stylist ``session_id`` is per browser tab (``sessionStorage``).
  * - `chatSessionId` is the `session_id` for `POST /api/browser/agent/chat/stream` and Socket.IO
  *   `join_session` / `sd_<id>`. The user picks a default on the Agents page (persisted in
  *   `sd_stylist_session_id`); presets live in `stylist-session.ts`. Account transcripts
@@ -14,12 +16,14 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './auth-context';
+import { AUTH_ENABLED, EPHEMERAL_MODE } from './auth-config';
 import * as chatApi from '../services/chatApi';
 import * as fashionApi from '../services/fashionApi';
 import {
   loadPersistedStylistSessionId,
   savePersistedStylistSessionId,
   sanitizeStylistSessionId,
+  STYLIST_SESSION_STORAGE_KEY,
 } from './stylist-session';
 
 /** Same as FastAPI `ChatRequest.session_id` default — used as initial preset. */
@@ -107,10 +111,19 @@ function loadLocalMessages(userEmail?: string): ConvoMessage[] {
 }
 
 function saveLocalMessages(msgs: ConvoMessage[], userEmail?: string) {
+  if (EPHEMERAL_MODE) return;
   try {
     const safe = msgs.map(m => ({ ...m, previewUrl: undefined, products: undefined }));
     localStorage.setItem(lsMessagesKey(userEmail), JSON.stringify(safe));
   } catch { /* storage quota exceeded — ignore */ }
+}
+
+function clearLegacyGuestChatStorage() {
+  if (!EPHEMERAL_MODE) return;
+  try {
+    localStorage.removeItem('sd_chat_messages_anon');
+    localStorage.removeItem(STYLIST_SESSION_STORAGE_KEY);
+  } catch { /* ignore */ }
 }
 
 // ── Context ────────────────────────────────────────────────────────────────
@@ -123,7 +136,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
   const authSessionId = session?.session_id;
 
   const [messages, setMessages] = useState<ConvoMessage[]>(() =>
-    loadLocalMessages(userEmail),
+    EPHEMERAL_MODE ? [buildInitialConvoMessage()] : loadLocalMessages(userEmail),
   );
   const [stylistSessionId, setStylistSessionIdState] = useState(loadPersistedStylistSessionId);
 
@@ -135,8 +148,18 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
 
   const chatSessionId = stylistSessionId;
 
+  // Ephemeral demo: never restore chat from disk; drop legacy localStorage keys.
+  useEffect(() => {
+    if (EPHEMERAL_MODE) {
+      clearLegacyGuestChatStorage();
+      setMessages([buildInitialConvoMessage()]);
+    }
+  }, []);
+
   // When the authenticated user changes, reload their transcript (stylist session is unchanged).
   useEffect(() => {
+    if (EPHEMERAL_MODE) return;
+
     if (authSessionId) {
       // Logged in — load history from backend, fall back to localStorage cache.
       fashionApi
@@ -210,7 +233,7 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
             console.warn('[convo-context] Failed to sync message to backend:', err);
           }
         });
-    } else {
+    } else if (AUTH_ENABLED) {
       console.log('[convo-context] Anonymous user, message saved to browser only');
     }
   };

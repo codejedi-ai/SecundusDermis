@@ -1,9 +1,14 @@
 /**
  * Browser-persisted chat `session_id` (`POST /api/browser/agent/chat/stream` + Socket.IO `sd_<id>`).
  * Account transcripts still use auth `session-id` on `/conversations` — see convo-context.
+ *
+ * In **ephemeral mode**, the id lives in ``sessionStorage`` only (new id per browser tab).
  */
 
+import { EPHEMERAL_MODE } from './auth-config';
+
 export const STYLIST_SESSION_STORAGE_KEY = 'sd_stylist_session_id';
+const GUEST_STYLIST_SESSION_KEY = 'sd_stylist_session_id_guest';
 
 export interface StylistAgentOption {
   readonly id: string;
@@ -39,7 +44,31 @@ export function sanitizeStylistSessionId(raw: string): string {
   return t;
 }
 
+function newGuestStylistSessionId(): string {
+  const suffix =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+      : String(Date.now());
+  return sanitizeStylistSessionId(`guest-${suffix}`);
+}
+
+/** Stylist thread for ephemeral demo mode — one id per browser tab session. */
+export function loadGuestStylistSessionId(): string {
+  try {
+    const existing = sessionStorage.getItem(GUEST_STYLIST_SESSION_KEY);
+    if (existing) return sanitizeStylistSessionId(existing);
+    const created = newGuestStylistSessionId();
+    sessionStorage.setItem(GUEST_STYLIST_SESSION_KEY, created);
+    return created;
+  } catch {
+    return newGuestStylistSessionId();
+  }
+}
+
 export function loadPersistedStylistSessionId(): string {
+  if (EPHEMERAL_MODE) {
+    return loadGuestStylistSessionId();
+  }
   try {
     const v = localStorage.getItem(STYLIST_SESSION_STORAGE_KEY);
     return sanitizeStylistSessionId(v || 'default');
@@ -49,8 +78,13 @@ export function loadPersistedStylistSessionId(): string {
 }
 
 export function savePersistedStylistSessionId(id: string): void {
+  const safe = sanitizeStylistSessionId(id);
   try {
-    localStorage.setItem(STYLIST_SESSION_STORAGE_KEY, sanitizeStylistSessionId(id));
+    if (EPHEMERAL_MODE) {
+      sessionStorage.setItem(GUEST_STYLIST_SESSION_KEY, safe);
+      return;
+    }
+    localStorage.setItem(STYLIST_SESSION_STORAGE_KEY, safe);
   } catch {
     /* quota / private mode */
   }

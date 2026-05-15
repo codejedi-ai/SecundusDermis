@@ -6,7 +6,7 @@ import * as chatApi from '../services/chatApi';
 import { shopContextForChatRequest } from '../lib/shopBridge';
 import { useShop } from '../lib/shop-context';
 import { useConvo, SD_CHAT_OPEN_EVENT } from '../lib/convo-context';
-import { AUTH_ENABLED } from '../lib/auth-config';
+import { AUTH_ENABLED, EPHEMERAL_MODE } from '../lib/auth-config';
 import { useAuth } from '../lib/auth-context';
 import { isAtelierExperience } from '../lib/experience-mode';
 import { useSocket } from '../lib/socket-context';
@@ -442,6 +442,12 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
               {connected
                 ? 'Live WebSocket is up for this chat session — stylist replies and product cards can update here in real time.'
                 : 'Live WebSocket disconnected — reconnecting… Real-time updates in this panel will resume when the link is back.'}
+            </p>
+          )}
+
+          {EPHEMERAL_MODE && (
+            <p className="chat-ephemeral-caption" role="status">
+              Ephemeral demo — chat is not saved; each visit starts fresh.
             </p>
           )}
 

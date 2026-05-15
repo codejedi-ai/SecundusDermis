@@ -100,7 +100,10 @@ CORS_ENABLED = _env_bool("CORS_ENABLED", True)
 # When ``False``, patron sign-in/register routes return 503; browser stylist chat works without login.
 AUTH_ENABLED = _env_bool("AUTH_ENABLED", True)
 
-# Shared house ``sdag_…`` when ``AUTH_ENABLED=false`` (boutique chat without accounts).
+# Demo deployment: ``AUTH_ENABLED`` off — no accounts, no server-side conversation store.
+EPHEMERAL_MODE = not AUTH_ENABLED
+
+# Shared house ``sdag_…`` when ephemeral (boutique chat without accounts).
 GUEST_PATRON_EMAIL = os.getenv("GUEST_PATRON_EMAIL", "guest@secundus.local").strip().lower()
 
 # When CORS is on: never use ``["*"]`` with credentialed fetches (see project notes / prior bug).
