@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, ShoppingBag, Check } from 'lucide-react'
 import * as fashionApi from '../services/fashionApi'
 import { useCart } from '../lib/cart-context'
+import { AUTH_ENABLED } from '../lib/auth-config'
 import { useAuth } from '../lib/auth-context'
 
 const FALLBACK = '/img/photo-6311392.jpg'
@@ -115,8 +116,8 @@ export default function Product() {
 
         <p className="product-description">{product.description || 'No description available.'}</p>
 
-        {/* ── Add to Cart ──────────────────────────────────────── */}
-        {session ? (
+        {/* ── Add to Cart (requires sign-in when auth is enabled) ─ */}
+        {AUTH_ENABLED && (session ? (
           alreadyInCart || added ? (
             <div className="product-cart-actions">
               <button className="product-add-btn product-add-btn--done" disabled>
@@ -141,7 +142,7 @@ export default function Product() {
           <p className="product-signin-hint">
             <Link to="/sign-in">Sign in</Link> to reserve this piece.
           </p>
-        )}
+        ))}
       </div>
     </div>
   )

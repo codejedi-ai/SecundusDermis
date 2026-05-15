@@ -1,5 +1,4 @@
 import { ReactNode } from 'react'
-import { AUTH_ENABLED } from '../lib/auth-config'
 import { useAuth } from '../lib/auth-context'
 import { Navigate, useLocation } from 'react-router-dom'
 
@@ -8,13 +7,10 @@ interface ProtectedRouteProps {
   fallback?: ReactNode
 }
 
+/** Requires a signed-in user. Parent ``PatronAuthOutlet`` disables the whole tree when auth is off. */
 const ProtectedRoute = ({ children, fallback }: ProtectedRouteProps) => {
   const { user, isLoading } = useAuth()
   const location = useLocation()
-
-  if (!AUTH_ENABLED) {
-    return <>{children}</>
-  }
 
   if (isLoading) {
     return (

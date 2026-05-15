@@ -69,7 +69,7 @@ const Header = () => {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/about" className="nav-link">About</Link>
             <Link to="/shop" className="nav-link">Shop</Link>
-            {user && isAtelierExperience(user) && (
+            {AUTH_ENABLED && user && isAtelierExperience(user) && (
               <Link to="/agents" className="nav-link">AI agents</Link>
             )}
           </nav>
@@ -104,10 +104,12 @@ const Header = () => {
           )}
 
           <nav className="nav-secondary nav-icons">
-            <Link to="/cart" className="nav-icon-link">
-              <ShoppingCart size={20} />
-              {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
-            </Link>
+            {AUTH_ENABLED && (
+              <Link to="/cart" className="nav-icon-link">
+                <ShoppingCart size={20} />
+                {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+              </Link>
+            )}
             {AUTH_ENABLED &&
               (user ? (
                 <Link
@@ -161,10 +163,12 @@ const Header = () => {
             ['/', 'Home'],
             ['/about', 'About'],
             ['/shop', 'Shop'],
-            ...(user && isAtelierExperience(user) ? [['/agents', 'AI agents']] as [string, string][] : []),
+            ...(AUTH_ENABLED && user && isAtelierExperience(user)
+              ? [['/agents', 'AI agents']] as [string, string][]
+              : []),
             ['/faq', 'FAQ'],
             ['/contact', 'Contact'],
-            ['/cart', 'Cart'],
+            ...(AUTH_ENABLED ? [['/cart', 'Cart']] as [string, string][] : []),
             ...(AUTH_ENABLED
               ? user
                 ? ([['/account', (user.name || user.email).length > 18 ? (user.name || user.email).slice(0, 18) + '…' : (user.name || user.email)]] as [string, string][])

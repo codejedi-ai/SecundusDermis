@@ -29,7 +29,7 @@ import ChatWidget from './components/ChatWidget'
 import ShopSidebar from './components/ShopSidebar'
 import AccountSidebar, { ACCOUNT_SECTION_IDS } from './components/AccountSidebar'
 import ResizableSidebar from './components/ResizableSidebar'
-import AuthPagesGate from './components/AuthPagesGate'
+import PatronAuthOutlet from './components/PatronAuthOutlet'
 import ProtectedRoute from './components/ProtectedRoute'
 import AtelierRoute from './components/AtelierRoute'
 import ScrollToTop from './components/ScrollToTop'
@@ -251,11 +251,33 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/about" element={<About />} />
-                <Route path="/sign-in" element={<AuthPagesGate><SignIn /></AuthPagesGate>} />
-                <Route path="/sign-up" element={<AuthPagesGate><SignUp /></AuthPagesGate>} />
-                <Route path="/forgot-password" element={<AuthPagesGate><ForgotPassword /></AuthPagesGate>} />
-                <Route path="/reset-password" element={<AuthPagesGate><ResetPassword /></AuthPagesGate>} />
-                <Route path="/verify-email" element={<AuthPagesGate><VerifyEmail /></AuthPagesGate>} />
+
+                {/* Patron sign-in surfaces — entire subtree off when AUTH_ENABLED=false */}
+                <Route element={<PatronAuthOutlet />}>
+                  <Route path="/sign-in" element={<SignIn />} />
+                  <Route path="/sign-up" element={<SignUp />} />
+                  <Route path="/signin" element={<SignIn />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
+
+                  <Route element={<AccountLayout />}>
+                    <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+                  </Route>
+
+                  <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
+
+                  <Route
+                    path="/agents"
+                    element={
+                      <ProtectedRoute>
+                        <AtelierRoute>
+                          <Agents />
+                        </AtelierRoute>
+                      </ProtectedRoute>
+                    }
+                  />
+                </Route>
 
                 {/* Shop area — sidebar lives here, not in individual pages */}
                 <Route element={<ShopLayout />}>
@@ -263,26 +285,8 @@ function App() {
                   <Route path="/product/:id" element={<Product />} />
                 </Route>
 
-                {/* Account area — uses AccountSidebar, not ShopSidebar */}
-                <Route element={<AccountLayout />}>
-                  <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
-                </Route>
-
-                {/* Cart — no sidebar needed */}
-                <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
-
                 <Route path="/faq" element={<FAQ />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route
-                  path="/agents"
-                  element={
-                    <ProtectedRoute>
-                      <AtelierRoute>
-                        <Agents />
-                      </AtelierRoute>
-                    </ProtectedRoute>
-                  }
-                />
               </Routes>
             </main>
             <AppChatWidget />

@@ -1193,16 +1193,19 @@ async def auth_create_agent_invite(
 
 @api_router.get("/cart", response_model=CartResponse)
 async def get_user_cart(session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: return CartResponse(items=[], total=0.0)
     return get_cart(session_id)
 
 @api_router.post("/cart", response_model=CartResponse)
 async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
 
 @api_router.delete("/cart/{product_id}", response_model=CartResponse)
 async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return remove_from_cart(session_id, product_id)
 
@@ -1548,11 +1551,13 @@ def _load_journal() -> list[dict]:
 
 @api_router.get("/conversations")
 async def get_conversations(session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: return {"messages": []}
     return {"messages": get_messages(session_id)}
 
 @api_router.post("/conversations")
 async def add_message(msg: ConvoMessage, session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
     
@@ -1567,6 +1572,7 @@ async def add_message(msg: ConvoMessage, session_id: Optional[str] = Depends(_br
 
 @api_router.delete("/conversations")
 async def clear_conversation_endpoint(session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     clear_convo(session_id)
     return {"status": "cleared"}

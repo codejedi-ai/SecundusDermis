@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Camera, Users, Play } from 'lucide-react'
+import { AUTH_ENABLED } from '../lib/auth-config'
 import { useAuth } from '../lib/auth-context'
 import { isAtelierExperience } from '../lib/experience-mode'
 
@@ -30,7 +31,7 @@ const Footer = () => {
             <h4 className="footer-heading">About</h4>
             <ul className="footer-list">
               <li><Link to="/about" className="footer-link">AI Agent Playground</Link></li>
-              {user && isAtelierExperience(user) && (
+              {AUTH_ENABLED && user && isAtelierExperience(user) && (
                 <li><Link to="/agents" className="footer-link">AI agents</Link></li>
               )}
             </ul>
