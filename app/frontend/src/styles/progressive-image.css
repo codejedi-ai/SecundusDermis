@@ -1,0 +1,82 @@
+/* Blur-up progressive loading (LQIP-style with dual-layer same-src decode) */
+
+.progressive-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-gray-100, #ececec);
+}
+
+.progressive-image__shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    110deg,
+    var(--color-gray-100, #ececec) 8%,
+    var(--color-gray-50, #f8f8f8) 18%,
+    var(--color-gray-100, #ececec) 33%
+  );
+  background-size: 200% 100%;
+  animation: progressive-image-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes progressive-image-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.progressive-image__blur,
+.progressive-image__full {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.progressive-image--cover .progressive-image__blur,
+.progressive-image--cover .progressive-image__full {
+  object-fit: cover;
+}
+
+.progressive-image--contain .progressive-image__blur,
+.progressive-image--contain .progressive-image__full {
+  object-fit: contain;
+}
+
+.progressive-image--fill .progressive-image__blur,
+.progressive-image--fill .progressive-image__full {
+  object-fit: fill;
+}
+
+.progressive-image__blur {
+  z-index: 1;
+  filter: blur(20px);
+  transform: scale(1.08);
+  opacity: 1;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+}
+
+.progressive-image__blur--hide {
+  opacity: 0;
+}
+
+.progressive-image__full {
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.progressive-image__full--show {
+  opacity: 1;
+}
+
+.progressive-image[data-loaded] .progressive-image__shimmer {
+  display: none;
+}

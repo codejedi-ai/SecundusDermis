@@ -3,6 +3,9 @@ import { ArrowRight } from 'lucide-react'
 import { useAuth } from '../lib/auth-context'
 import { AUTH_ENABLED } from '../lib/auth-config'
 import { isAtelierExperience } from '../lib/experience-mode'
+import ProgressiveImage from '../components/ProgressiveImage'
+
+const FALLBACK_IMG = '/img/placeholder.svg'
 
 const About = () => {
   const { user } = useAuth()
@@ -12,9 +15,10 @@ const About = () => {
       <section className="about-hero-split" aria-labelledby="about-hero-title">
         <div className="about-hero-inner">
           <figure className="about-hero-media">
-            <img
+            <ProgressiveImage
               src="/image-blog.jpeg"
               alt="Secundus Dermis — AI-powered fashion editorial"
+              fallbackSrc={FALLBACK_IMG}
               loading="eager"
             />
           </figure>

@@ -282,6 +282,7 @@ function App() {
                 {/* Shop area — sidebar lives here, not in individual pages */}
                 <Route element={<ShopLayout />}>
                   <Route path="/shop" element={<Shop />} />
+                  <Route path="/product/family/:familyId" element={<Product />} />
                   <Route path="/product/:id" element={<Product />} />
                 </Route>
 

@@ -92,6 +92,14 @@ from agent_socket_bridge import (
     replace_patron_agent_socket_exclusive,
 )
 from stylist_backend_bridge import InProcessStylistDeps
+from catalog_meta import (
+    assign_family_prices,
+    build_browse_summaries,
+    build_family_detail,
+    build_family_summaries,
+    enrich_catalog_item,
+    public_item,
+)
 from shop_tools import (
     build_catalog_stats,
     keyword_search as shop_keyword_search,
@@ -226,20 +234,6 @@ BODY_SECTIONS = [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── Price table ───────────────────────────────────────────────────────────────
-
-_PRICE_RANGES = {
-    "Denim": (39.99, 89.99), "Jackets_Vests": (59.99, 199.99), "Pants": (29.99, 79.99),
-    "Shorts": (19.99, 49.99), "Skirts": (24.99, 69.99), "Shirts_Polos": (19.99, 59.99),
-    "Tees_Tanks": (14.99, 39.99), "Sweaters": (34.99, 99.99), "Sweatshirts_Hoodies": (29.99, 79.99),
-    "Dresses": (34.99, 129.99), "Suiting": (79.99, 299.99), "Blouses_Shirts": (24.99, 69.99),
-    "Cardigans": (34.99, 89.99), "Rompers_Jumpsuits": (39.99, 99.99), "Graphic_Tees": (14.99, 34.99),
-}
-
-def _price(category: str) -> float:
-    lo, hi = _PRICE_RANGES.get(category, (19.99, 79.99))
-    return round(random.uniform(lo, hi), 2)
-
 def _extract_attrs(desc: str) -> dict:
     dl = desc.lower()
     attrs = {}
@@ -299,12 +293,13 @@ def load_catalog() -> list[dict]:
         cat = (row.get("product_type", "") or "").strip() or "unknown"
         desc = (row.get("caption", "") or "").strip()
         attrs = _extract_attrs(desc)
-        catalog.append({
+        catalog.append(enrich_catalog_item({
             "product_id": img.stem, "image_id": img.stem,
             "product_name": _product_name(gender, cat, attrs), "description": desc,
-            "gender": gender, "category": cat, "price": _price(cat),
+            "gender": gender, "category": cat, "price": 0.0,
             "image_url": f"/images/{img.name}", "image_path": str(img),
-        })
+        }, row))
+    assign_family_prices(catalog)
     logger.info(f"Loaded {len(catalog)} items from catalog.")
     return catalog
 
@@ -325,6 +320,7 @@ def load_prompts() -> dict:
 class _State:
     agent_http: httpx.AsyncClient | None = None
     catalog: list[dict] = []
+    catalog_families: list[dict] = []
     histogram_cache: dict[str, np.ndarray] = {}
     prompts: dict = {}
 
@@ -350,6 +346,12 @@ async def lifespan(app: FastAPI):
     download_and_extract()
     logger.info("Loading catalog …")
     state.catalog = load_catalog()
+    state.catalog_families = build_family_summaries(state.catalog)
+    logger.info(
+        "Catalog families: %s (from %s SKUs)",
+        len(state.catalog_families),
+        len(state.catalog),
+    )
     logger.info("Loading system prompts …")
     state.prompts = load_prompts()
     logger.info("Initialising vector store …")
@@ -1468,6 +1470,7 @@ async def _deployment_catalog_stats_dict() -> dict[str, Any]:
             agent_proxy=bool(config.AGENT_SERVICE_URL),
         )
     )
+    out["total_families"] = len(state.catalog_families)
     out["agent_socket_online_count"] = count_room_participants(sio, AGENT_SERVICE_ROOM)
     out["stylist_agent_http_reachable"] = None
     if state.agent_http is not None:
@@ -1501,21 +1504,34 @@ async def catalog_stats():
 
 @api_router.get("/catalog/browse")
 async def catalog_browse(offset: int = 0, limit: int = 24, gender: Optional[str] = None, category: Optional[str] = None, q: Optional[str] = None):
+    """Paginated shop grid — one card per dataset ``family_id`` within the active filters."""
     limit = min(max(1, limit), 48)
-    # Split query into individual words; show item if ANY word appears in description or name
-    words = [w for w in q.lower().split() if w] if q else []
-    def _matches(item: dict) -> bool:
-        if gender and item["gender"] != gender.upper():
-            return False
-        if category and item["category"] != category:
-            return False
-        if not words:
-            return True
-        haystack = f"{item.get('description', '')} {item.get('product_name', '')}".lower()
-        return any(w in haystack for w in words)
-    filtered = [item for item in state.catalog if _matches(item)]
+    filtered = build_browse_summaries(
+        state.catalog,
+        gender=gender,
+        category=category,
+        q=q,
+    )
     page = filtered[offset:offset + limit]
-    return {"products": [{k: v for k, v in p.items() if k != "image_path"} for p in page], "offset": offset, "limit": limit, "total": len(filtered)}
+    return {"families": page, "offset": offset, "limit": limit, "total": len(filtered)}
+
+
+@api_router.get("/catalog/family/{family_id}")
+async def catalog_family(
+    family_id: str,
+    gender: str,
+    category: str,
+):
+    """Variant and view tree for a dataset product family (requires gender + category)."""
+    detail = build_family_detail(
+        state.catalog,
+        family_id=family_id,
+        gender=gender,
+        category=category,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Product family not found")
+    return detail
 
 @api_router.get("/catalog/random")
 async def catalog_random(n: int = 12):
@@ -1581,8 +1597,9 @@ async def clear_conversation_endpoint(session_id: Optional[str] = Depends(_brows
 @api_router.get("/catalog/product/{product_id}")
 async def catalog_product(product_id: str):
     item = next((p for p in state.catalog if p["product_id"] == product_id), None)
-    if item is None: raise HTTPException(status_code=404, detail="Product not found")
-    return {k: v for k, v in item.items() if k != "image_path"}
+    if item is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return public_item(item)
 
 
 app.include_router(api_router)

@@ -14,8 +14,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from google.genai import types as genai_types
-
 from secundus_agent.backend_config import api_config as config
 
 log = logging.getLogger(__name__)
@@ -286,6 +284,8 @@ def describe_image(image_id: str) -> dict:
                 "items": [],
                 "all_keywords": [],
             }
+
+        from google.genai import types as genai_types
 
         # VLA Model: Load image bytes and send directly to VLM
         image_bytes = image_path.read_bytes()

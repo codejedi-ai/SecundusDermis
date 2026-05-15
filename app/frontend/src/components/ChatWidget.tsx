@@ -18,6 +18,7 @@ import {
 } from '../lib/stylistSocketDedupe';
 import { fetchHouseAgentKey, readCachedHouseAgentKey } from '../lib/house-agent-key';
 import { emptyStylistTurnMessage, userFacingChatSendError } from '../lib/chat-copy';
+import ProgressiveImage from './ProgressiveImage';
 
 /**
  * Floating **Stylist** panel — generic signed-in browser session (``/api/browser/agent/*``).
@@ -459,10 +460,12 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
             {messages.map((msg) => (
               <div key={msg.id} className={`chat-message ${msg.role}`}>
                 {msg.previewUrl && (
-                  <img
+                  <ProgressiveImage
                     src={msg.previewUrl}
                     alt="Uploaded"
                     className="chat-uploaded-image"
+                    loading="eager"
+                    wrapperClassName="chat-uploaded-image-wrap"
                   />
                 )}
                 <div className="chat-bubble">
@@ -503,13 +506,11 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
                                   {section.products.map((p) => (
                                     <Link key={p.product_id} to={`/product/${p.product_id}`} className="chat-product-card">
                                       <div className="chat-product-img">
-                                        <img
+                                        <ProgressiveImage
                                           src={chatApi.productImageUrl(p.image_url)}
                                           alt={p.product_name}
+                                          fallbackSrc={FALLBACK_IMAGE}
                                           loading="lazy"
-                                          onError={(e) => {
-                                            (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
-                                          }}
                                         />
                                       </div>
                                       <div className="chat-product-info">
@@ -531,13 +532,11 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
                     {msg.products.map((p) => (
                       <Link key={p.product_id} to={`/product/${p.product_id}`} className="chat-product-card">
                         <div className="chat-product-img">
-                          <img
+                          <ProgressiveImage
                             src={chatApi.productImageUrl(p.image_url)}
                             alt={p.product_name}
+                            fallbackSrc={FALLBACK_IMAGE}
                             loading="lazy"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = FALLBACK_IMAGE;
-                            }}
                           />
                         </div>
                         <div className="chat-product-info">
@@ -592,7 +591,12 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
           {/* Pending image preview */}
           {pendingImage && (
             <div className="chat-pending-image">
-              <img src={pendingImage.previewUrl} alt="Pending upload" />
+              <ProgressiveImage
+                src={pendingImage.previewUrl}
+                alt="Pending upload"
+                loading="eager"
+                wrapperClassName="chat-pending-image-inner"
+              />
               <button
                 className="chat-remove-image"
                 onClick={removePendingImage}

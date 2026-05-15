@@ -31,11 +31,10 @@
   justify-self: start;
 }
 
-.about-hero-media img {
+.about-hero-media .progressive-image {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
 
 .about-hero-copy {

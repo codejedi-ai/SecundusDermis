@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import ProgressiveImage from '../components/ProgressiveImage'
 import * as fashionApi from '../services/fashionApi'
 import { useShop } from '../lib/shop-context'
 
@@ -9,7 +10,7 @@ const PAGE = 24
 export default function Shop() {
   const { gender, category, query, setTotal } = useShop()
 
-  const [products, setProducts] = useState<fashionApi.Product[]>([])
+  const [families, setFamilies] = useState<fashionApi.CatalogFamily[]>([])
   const [offset, setOffset]     = useState(0)
   const [total, setLocalTotal]  = useState(0)
   const [loading, setLoading]   = useState(false)
@@ -29,13 +30,13 @@ export default function Shop() {
       })
       setLocalTotal(res.total)
       setTotal(res.total)
-      const next = off + res.products.length
+      const next = off + res.families.length
       offsetRef.current = next
       setOffset(next)
-      setProducts(prev => {
-        const merged = off === 0 ? res.products : [...prev, ...res.products]
+      setFamilies(prev => {
+        const merged = off === 0 ? res.families : [...prev, ...res.families]
         const seen = new Set<string>()
-        return merged.filter(p => seen.has(p.product_id) ? false : (seen.add(p.product_id), true))
+        return merged.filter(f => seen.has(f.family_id) ? false : (seen.add(f.family_id), true))
       })
     } catch {
       // backend offline — silent
@@ -47,7 +48,7 @@ export default function Shop() {
   useEffect(() => {
     offsetRef.current = 0
     setOffset(0)
-    setProducts([])
+    setFamilies([])
     fetchPage(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gender, category, query])
@@ -70,22 +71,29 @@ export default function Shop() {
 
   return (
     <>
-      {/* ── Product grid ───────────────────────────────────────────────────── */}
       <div className="shop-grid">
-        {products.map(p => (
-          <Link key={p.product_id} to={`/product/${p.product_id}`} className="shop-card">
+        {families.map(f => (
+          <Link
+            key={f.family_key || f.family_id}
+            to={fashionApi.familyProductPath(f)}
+            className="shop-card"
+          >
             <div className="shop-card-img">
-              <img
-                src={fashionApi.productImageUrl(p.image_url)}
-                alt={p.product_name}
+              <ProgressiveImage
+                src={fashionApi.productImageUrl(f.image_url)}
+                alt={f.product_name}
+                fallbackSrc={FALLBACK}
                 loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK }}
               />
             </div>
             <div className="shop-card-info">
-              <p className="shop-card-name">{p.product_name}</p>
-              <p className="shop-card-meta">{p.gender} · {p.category.replace(/_/g, ' ')}</p>
-              <p className="shop-card-price">${p.price.toFixed(2)}</p>
+              <p className="shop-card-name">{f.product_name}</p>
+              <p className="shop-card-family-id">{f.family_id}</p>
+              <p className="shop-card-meta">
+                {f.gender} · {f.category.replace(/_/g, ' ')}
+                {f.variant_count > 1 ? ` · ${f.variant_count} looks` : ''}
+              </p>
+              <p className="shop-card-price">${f.price.toFixed(2)}</p>
             </div>
           </Link>
         ))}
@@ -97,13 +105,13 @@ export default function Shop() {
         </div>
       )}
 
-      {!loading && products.length === 0 && (
+      {!loading && families.length === 0 && (
         <div className="shop-empty">No products found. Try a different search or category.</div>
       )}
 
       {hasMore && <div ref={sentinelRef} className="shop-sentinel" />}
-      {!hasMore && products.length > 0 && (
-        <p className="shop-end">All {total.toLocaleString()} items shown</p>
+      {!hasMore && families.length > 0 && (
+        <p className="shop-end">{total.toLocaleString()} product families shown</p>
       )}
     </>
   )

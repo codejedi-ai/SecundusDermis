@@ -19,8 +19,48 @@ export interface Product {
   gender: string;
   category: string;
   price: number;
-  similarity: number;
+  similarity?: number;
   image_url: string; // e.g. "/images/foo.jpg"
+  family_id?: string;
+  look_variant?: string;
+  image_view?: string;
+  family_key?: string;
+}
+
+/** One shop grid card — dataset family (e.g. ``id_00000020``), not a single image stem. */
+export interface CatalogFamily {
+  family_id: string;
+  family_key: string;
+  gender: string;
+  category: string;
+  product_name: string;
+  description: string;
+  price: number;
+  image_url: string;
+  default_product_id: string;
+  variant_count: number;
+  variants: string[];
+}
+
+export interface FamilyVariantView {
+  view: string;
+  product_id: string;
+  image_url: string;
+  price: number;
+}
+
+export interface FamilyVariant {
+  variant: string;
+  views: FamilyVariantView[];
+}
+
+export interface CatalogFamilyDetail {
+  family_id: string;
+  gender: string;
+  category: string;
+  product_name: string;
+  description: string;
+  variants: FamilyVariant[];
 }
 
 
@@ -32,6 +72,7 @@ export interface SearchResponse {
 
 export interface CatalogStats {
   total_products: number;
+  total_families?: number;
   categories: string[];
   genders: string[];
   embedding_model: string;
@@ -111,7 +152,7 @@ export function browseCatalog(opts: {
   gender?: string;
   category?: string;
   q?: string;
-} = {}): Promise<{ products: Product[]; offset: number; limit: number; total: number }> {
+} = {}): Promise<{ families: CatalogFamily[]; offset: number; limit: number; total: number }> {
   const params = new URLSearchParams();
   if (opts.offset != null) params.set('offset', String(opts.offset));
   if (opts.limit   != null) params.set('limit',  String(opts.limit));
@@ -121,9 +162,26 @@ export function browseCatalog(opts: {
   return request(`/catalog/browse?${params}`);
 }
 
-/** Single product by ID — returns the product as stored in the catalog. */
+/** Single SKU by image stem (cart, stylist links). */
 export function getProduct(productId: string): Promise<Product> {
   return request(`/catalog/product/${productId}`);
+}
+
+/** Variant / view tree for a dataset product family. */
+export function getCatalogFamily(
+  familyId: string,
+  opts: { gender: string; category: string },
+): Promise<CatalogFamilyDetail> {
+  const params = new URLSearchParams({
+    gender: opts.gender,
+    category: opts.category,
+  });
+  return request(`/catalog/family/${encodeURIComponent(familyId)}?${params}`);
+}
+
+export function familyProductPath(f: Pick<CatalogFamily, 'family_id' | 'gender' | 'category'>): string {
+  const q = new URLSearchParams({ gender: f.gender, category: f.category });
+  return `/product/family/${encodeURIComponent(f.family_id)}?${q}`;
 }
 
 /** Random products for homepage / discovery. */

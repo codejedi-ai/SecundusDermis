@@ -6,6 +6,7 @@ import { SD_CHAT_OPEN_EVENT } from '../lib/convo-context'
 import { useAuth } from '../lib/auth-context'
 import { isAtelierExperience } from '../lib/experience-mode'
 import Footer from '../components/Footer'
+import ProgressiveImage from '../components/ProgressiveImage'
 
 const FALLBACK_IMG = '/img/placeholder.svg'
 
@@ -105,12 +106,11 @@ const Home = () => {
       {/* Hero - Shopping focused */}
       <section className="hero">
         <div className="hero-image">
-          <img
+          <ProgressiveImage
             src="/image-hero.jpeg"
             alt="Woman in elegant outfit"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = FALLBACK_IMG
-            }}
+            fallbackSrc={FALLBACK_IMG}
+            loading="eager"
           />
         </div>
         <div className="hero-content">
@@ -139,11 +139,11 @@ const Home = () => {
             {catalogProducts.map((p) => (
               <Link key={p.product_id} to={`/product/${p.product_id}`} className="catalog-card">
                 <div className="catalog-card-img">
-                  <img
+                  <ProgressiveImage
                     src={fashionApi.productImageUrl(p.image_url)}
                     alt={p.product_name}
+                    fallbackSrc={FALLBACK_IMG}
                     loading="lazy"
-                    onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMG }}
                   />
                 </div>
                 <div className="catalog-card-info">
@@ -227,12 +227,11 @@ const Home = () => {
             </div>
           </div>
           <div className="brand-story-image">
-            <img
+            <ProgressiveImage
               src="/image-understand.jpeg"
               alt="Fashion catalog preview"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = FALLBACK_IMG
-              }}
+              fallbackSrc={FALLBACK_IMG}
+              loading="lazy"
             />
           </div>
         </div>
