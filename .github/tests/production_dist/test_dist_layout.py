@@ -43,3 +43,16 @@ def test_index_script_src_matches_existing_chunk():
     rel = m.group(1).lstrip("/")  # assets/index-XXXX.js
     chunk = _DIST_DIR / rel.replace("/", "/")  # dist + assets/...
     assert chunk.is_file(), f"index references missing bundle: {chunk}"
+
+
+def test_bundle_does_not_call_patron_routes_without_api_prefix():
+    """
+    Mis-set ``VITE_API_URL=http://localhost:8000`` (no ``/api``) bakes absolute bases that hit
+    ``/auth/me`` instead of ``/api/auth/me``. CI build clears VITE_*; this guards regressions.
+    """
+    js = "\n".join(p.read_text(encoding="utf-8") for p in (_DIST_DIR / "assets").glob("*.js"))
+    assert "localhost:8000/auth" not in js, (
+        "production bundle calls patron routes on bare :8000 without /api — "
+        "use relative /api (leave VITE_API_URL unset) or npm run build from app/frontend"
+    )
+    assert "127.0.0.1:8000/auth" not in js

@@ -6,7 +6,7 @@
 #
 # Usage (from repo root or from app/):
 #   ./app/run.sh dev         — API on :8000 + Vite dev server on :5173 (Vite proxies /api → API)
-#   ./app/run.sh prod        — build SPA into app/dist, then start API only (open http://localhost:8000)
+#   ./app/run.sh prod        — build SPA, stylist agent :8765 + API :8000 (open http://localhost:8000)
 #   ./app/run.sh build-only  — only rebuild app/dist
 
 set -euo pipefail
@@ -86,10 +86,15 @@ case "$cmd" in
       if [[ ! -d node_modules ]]; then
         npm ci
       fi
-      npm run build
+      # Override frontend/.env so prod bundle uses same-origin /api (not bare :8000 without /api).
+      VITE_API_URL= VITE_BACKEND_URL= VITE_IMAGE_URL= npm run build
     })
-    echo "[run.sh] Starting API (serves SPA from $ROOT/dist when routes fall through)…"
-    cd "$ROOT/backend" && exec uv run python api.py --no-reload
+    echo "[run.sh] Starting stylist agent on http://127.0.0.1:8765 (background)…"
+    (cd "$ROOT/agent" && PYTHONPATH="$ROOT/agent:$ROOT/backend" exec uv run uvicorn secundus_agent.main:app --host 127.0.0.1 --port 8765) &
+    AGENT_PID=$!
+    _wait_agent_http || exit 1
+    echo "[run.sh] Starting API on http://127.0.0.1:8000 (serves SPA from $ROOT/dist; AGENT_SERVICE_URL=http://127.0.0.1:8765)…"
+    cd "$ROOT/backend" && AGENT_SERVICE_URL=http://127.0.0.1:8765 exec uv run python api.py --no-reload
     ;;
   build-only)
     echo "[run.sh] Building frontend → $ROOT/dist …"
@@ -97,7 +102,7 @@ case "$cmd" in
       if [[ ! -d node_modules ]]; then
         npm ci
       fi
-      npm run build
+      VITE_API_URL= VITE_BACKEND_URL= VITE_IMAGE_URL= npm run build
     })
     echo "[run.sh] Done. Output: $ROOT/dist"
     ;;
@@ -108,7 +113,7 @@ case "$cmd" in
     echo "                         Set GEMINI_API_KEY + AGENT_INTERNAL_SECRET in env (see app/backend/.env.example)."
     echo "  backend-only         — FastAPI + Vite without starting the agent (chat 503 unless AGENT_SERVICE_URL is set)."
     echo "  agent          — Stylist agent service only on :8765 (separate Gemini process; see app/agent/README.md)."
-    echo "  prod           — npm run build (→ app/dist) then API only on :8000 (single process serves UI + API)."
+    echo "  prod           — npm run build (→ app/dist), agent :8765 + API :8000 (UI + API + stylist)."
     echo "  build-only     — rebuild app/dist only."
     exit 1
     ;;

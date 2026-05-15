@@ -1,26 +1,11 @@
 /**
  * Central API / asset bases for the browser.
  *
- * **Origin vs path** — Between environments, only the **origin** (scheme + host + port; in local
- * dev often “the IP”) changes. Paths such as ``/api/...`` stay fixed; the SPA uses relative ``/api``.
+ * **Contract:** Patron JSON routes always live under ``/api/...`` (see ``PUBLIC_HTTP_API_PREFIX``).
  *
- * **Dev vs prod**
- * - **Vite dev server** (`npm run dev`): ``API_BASE`` is always ``PUBLIC_HTTP_API_PREFIX`` (``VITE_API_URL``
- *   ignored for JSON). Vite forwards ``/api/...`` unchanged to FastAPI — same paths as ``run.sh prod`` / nginx + backend.
- * - **Production**: the built SPA is served **by the backend** (``app/dist`` on FastAPI, or nginx
- *   in front of the same origin). Leave ``VITE_API_URL`` unset so ``API_BASE`` stays ``/api`` on
- *   that host. Only set ``VITE_API_URL`` to a full URL when the HTML is on a *different* origin
- *   than the API (unusual for this project).
- *
- * **``VITE_API_URL``** — optional Vite env (baked in at ``npm run build``). If set, it becomes the
- *   base string for REST calls (e.g. ``https://api.example.com`` or ``http://localhost:8000``).
- *   If unset/empty, ``API_BASE`` is ``/api`` (relative to whatever page is serving the SPA).
- *
- * **Images** (`/images/*`, `/uploads/*` from API) — should load from the FastAPI host.
- * - Set `VITE_BACKEND_URL` (e.g. `http://localhost:8000`) so `<img>` URLs hit the server directly.
- * - In dev, if unset, we default to `http://localhost:8000` while `API_BASE` stays `/api` (proxied).
- * - Production build: leave unset to use same-origin relative `/images` (nginx proxies to backend),
- *   or set `VITE_BACKEND_URL` at build time if the UI is served from a host without `/images` proxy.
+ * - **Dev** (`npm run dev` / ``./run.sh dev``): ``API_BASE`` is ``/api`` → Vite proxies to FastAPI.
+ * - **Prod** (``./run.sh prod``): built SPA served on :8000; ``API_BASE`` is ``/api`` on that origin.
+ * - **Split-origin prod:** set ``VITE_API_URL`` to the API host at build time (``withPublicApiPrefix`` adds ``/api`` if missing).
  */
 
 const VITE_API = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -29,33 +14,105 @@ const VITE_BACKEND = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.t
 
 const DEFAULT_DEV_BACKEND = 'http://localhost:8000';
 const isBrowser = typeof window !== 'undefined';
-const isLocalHostPage = isBrowser && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 
-/** Same path prefix as ``PUBLIC_HTTP_API_PREFIX`` in ``app/backend/config.py`` (``APIRouter`` prefix). */
+/** Same path prefix as ``PUBLIC_HTTP_API_PREFIX`` in ``app/backend/config.py``. */
 export const PUBLIC_HTTP_API_PREFIX = '/api' as const;
 
-function normalizeApiBase(): string {
-  // Vite dev server: always same-origin `/api` so requests hit the proxy (FastAPI can use CORS_ENABLED=false).
-  // A local `VITE_API_URL=http://localhost:8000` would otherwise bypass the proxy and fail with NetworkError.
-  if (import.meta.env.DEV) {
-    return PUBLIC_HTTP_API_PREFIX;
-  }
-  if (!VITE_API) return PUBLIC_HTTP_API_PREFIX;
-  // If the build is configured for localhost but page is remote (e.g. ngrok),
-  // force same-origin API so requests do not point to the viewer's localhost.
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_API) && !isLocalHostPage) {
-    return PUBLIC_HTTP_API_PREFIX;
-  }
-  return VITE_API;
+const LOCALHOST_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+function isLocalhostUrl(url: string): boolean {
+  return LOCALHOST_ORIGIN_RE.test(url.trim().replace(/\/$/, ''));
 }
 
-/** Relative `/api` (proxied in dev) or full URL to the API (production split-origin only). */
-export const API_BASE = normalizeApiBase();
+function pageOriginHostname(pageOrigin: string): string {
+  try {
+    return new URL(pageOrigin).hostname;
+  } catch {
+    return '';
+  }
+}
 
 /**
- * Origin for ``socket.io-client`` (path stays ``/socket.io``).
- * When ``API_BASE`` is relative, use the page origin so dev traffic goes through the Vite WebSocket proxy.
+ * FastAPI patron routes are mounted at ``/api/...``. A bare origin in ``VITE_API_URL``
+ * (e.g. ``http://localhost:8000``) must not produce ``/auth/me``.
  */
+export function withPublicApiPrefix(apiBase: string): string {
+  const trimmed = apiBase.trim().replace(/\/$/, '');
+  if (!trimmed) return PUBLIC_HTTP_API_PREFIX;
+  if (trimmed.startsWith('/')) {
+    return trimmed === PUBLIC_HTTP_API_PREFIX || trimmed.startsWith(`${PUBLIC_HTTP_API_PREFIX}/`)
+      ? trimmed
+      : PUBLIC_HTTP_API_PREFIX;
+  }
+  try {
+    const url = new URL(trimmed);
+    const path = url.pathname.replace(/\/$/, '') || '';
+    if (path === '' || path === '/') {
+      return `${url.origin}${PUBLIC_HTTP_API_PREFIX}`;
+    }
+    if (path === PUBLIC_HTTP_API_PREFIX || path.startsWith(`${PUBLIC_HTTP_API_PREFIX}/`)) {
+      return `${url.origin}${path}`;
+    }
+    return `${url.origin}${PUBLIC_HTTP_API_PREFIX}`;
+  } catch {
+    return PUBLIC_HTTP_API_PREFIX;
+  }
+}
+
+export type ResolveApiBaseInput = {
+  /** Vite dev server — always use proxied ``/api``. */
+  dev: boolean;
+  /** ``import.meta.env.VITE_API_URL`` at build time (may be empty). */
+  viteApiUrl?: string;
+  /** ``window.location.origin`` when resolving in the browser. */
+  pageOrigin?: string;
+};
+
+/** Pure resolver used by ``API_BASE`` and unit tests (dev + prod matrix). */
+export function resolveApiBase(input: ResolveApiBaseInput): string {
+  const viteApi = (input.viteApiUrl ?? '').trim();
+  if (input.dev) {
+    return PUBLIC_HTTP_API_PREFIX;
+  }
+  if (!viteApi) {
+    return PUBLIC_HTTP_API_PREFIX;
+  }
+
+  const pageHost = input.pageOrigin ? pageOriginHostname(input.pageOrigin) : '';
+  const pageIsLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(pageHost);
+
+  // ngrok / remote viewer: do not call the viewer's baked-in localhost API.
+  if (isLocalhostUrl(viteApi) && input.pageOrigin && !pageIsLocalhost) {
+    return PUBLIC_HTTP_API_PREFIX;
+  }
+
+  // run.sh prod on :8000 (or any same-origin deploy).
+  if (input.pageOrigin) {
+    try {
+      const configured = new URL(viteApi, input.pageOrigin);
+      if (configured.origin === new URL(input.pageOrigin).origin) {
+        return PUBLIC_HTTP_API_PREFIX;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return withPublicApiPrefix(viteApi);
+}
+
+function normalizeApiBase(): string {
+  return resolveApiBase({
+    dev: import.meta.env.DEV,
+    viteApiUrl: VITE_API,
+    pageOrigin: isBrowser ? window.location.origin : undefined,
+  });
+}
+
+/** Relative ``/api`` (dev proxy + same-origin prod) or full API URL (split-origin prod). */
+export const API_BASE = normalizeApiBase();
+
+/** Origin for ``socket.io-client`` (path stays ``/socket.io``). */
 export function socketIoOrigin(): string {
   if (!isBrowser) {
     return '';
@@ -70,35 +127,66 @@ export function socketIoOrigin(): string {
   }
 }
 
-function computeImageBase(): string {
-  if (VITE_IMG) {
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_IMG) && !isLocalHostPage) {
-      return '';
-    }
-    return VITE_IMG.replace(/\/$/, '');
+export type ResolveImageBaseInput = {
+  dev: boolean;
+  viteApiUrl?: string;
+  viteImageUrl?: string;
+  viteBackendUrl?: string;
+  pageOrigin?: string;
+};
+
+export function resolveImageBase(input: ResolveImageBaseInput): string {
+  const viteImg = (input.viteImageUrl ?? '').trim();
+  const viteBackend = (input.viteBackendUrl ?? '').trim();
+  const viteApi = (input.viteApiUrl ?? '').trim();
+  const pageHost = input.pageOrigin ? pageOriginHostname(input.pageOrigin) : '';
+  const pageIsLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(pageHost);
+
+  const localhostGuard = (url: string) =>
+    isLocalhostUrl(url) && input.pageOrigin && !pageIsLocalhost;
+
+  if (viteImg) {
+    if (localhostGuard(viteImg)) return '';
+    return viteImg.replace(/\/$/, '');
   }
-  if (VITE_BACKEND) {
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(VITE_BACKEND) && !isLocalHostPage) {
-      return '';
-    }
-    return VITE_BACKEND.replace(/\/$/, '');
+  if (viteBackend) {
+    if (localhostGuard(viteBackend)) return '';
+    return viteBackend.replace(/\/$/, '');
   }
-  if (VITE_API && /^https?:\/\//i.test(VITE_API)) {
+  if (viteApi && /^https?:\/\//i.test(viteApi)) {
+    if (localhostGuard(viteApi)) return '';
+    if (input.pageOrigin) {
+      try {
+        if (new URL(viteApi, input.pageOrigin).origin === new URL(input.pageOrigin).origin) {
+          return '';
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     try {
-      return new URL(VITE_API).origin;
+      return new URL(viteApi).origin;
     } catch {
       /* ignore */
     }
   }
-  // Local Vite: talk to FastAPI directly for static mounts (matches uv run api.py).
-  if (import.meta.env.DEV) {
+  if (input.dev) {
     return DEFAULT_DEV_BACKEND.replace(/\/$/, '');
   }
-  // Production: same-origin `/images` → nginx → backend
   return '';
 }
 
-/** Origin (no trailing slash) prepended to `/images/...` from the API. */
+function computeImageBase(): string {
+  return resolveImageBase({
+    dev: import.meta.env.DEV,
+    viteApiUrl: VITE_API,
+    viteImageUrl: VITE_IMG,
+    viteBackendUrl: VITE_BACKEND,
+    pageOrigin: isBrowser ? window.location.origin : undefined,
+  });
+}
+
+/** Origin (no trailing slash) prepended to ``/images/...`` from the API; empty = same-origin relative. */
 export const IMAGE_BASE = computeImageBase();
 
 export function productImageUrl(image_url: string): string {

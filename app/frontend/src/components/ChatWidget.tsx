@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { ImagePlus, Loader2, MessageCircle, Send, X, Trash2, Sparkles, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
@@ -7,6 +7,7 @@ import { shopContextForChatRequest } from '../lib/shopBridge';
 import { useShop } from '../lib/shop-context';
 import { useConvo, SD_CHAT_OPEN_EVENT } from '../lib/convo-context';
 import { useAuth } from '../lib/auth-context';
+import { isAtelierExperience } from '../lib/experience-mode';
 import { useSocket } from '../lib/socket-context';
 import {
   fingerprintProductIds,
@@ -14,13 +15,15 @@ import {
   shouldSkipDuplicateFoundProducts,
   shouldSkipDuplicateStylistReply,
 } from '../lib/stylistSocketDedupe';
-import { userFacingChatSendError } from '../lib/chat-copy';
+import { fetchHouseAgentKey, readCachedHouseAgentKey } from '../lib/house-agent-key';
+import { emptyStylistTurnMessage, userFacingChatSendError } from '../lib/chat-copy';
 
 /**
  * Floating **Stylist** panel — generic signed-in browser session (``/api/browser/agent/*``).
  *
  * **Boutique and Atelier:** the launcher is always mounted from ``AppChatWidget`` in ``main.tsx`` for both
  * modes (About page omits it only). Do **not** hide this UI based on ``experience_mode``.
+ * The WebSocket status line under the header is **Atelier-only**; Boutique keeps that copy out of the panel.
  */
 const FALLBACK_IMAGE = '/img/placeholder.svg';
 
@@ -40,8 +43,14 @@ export type ChatWidgetVariant = 'floating' | 'embedded';
 
 export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWidgetVariant }) {
   const { messages, chatSessionId, addMessage } = useConvo();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const authSessionId = session?.session_id;
+  const atelierUi = isAtelierExperience(user);
+  const boutiqueMode = !atelierUi;
+  const [houseAgentKey, setHouseAgentKey] = useState<string | null>(() =>
+    boutiqueMode ? readCachedHouseAgentKey() : null,
+  );
+  const [houseKeyLoading, setHouseKeyLoading] = useState(false);
   const [sendBlockedHint, setSendBlockedHint] = useState<string | null>(null);
   const sendHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,8 +149,52 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     return () => window.removeEventListener(SD_CHAT_OPEN_EVENT, open);
   }, []);
 
-  // Scroll to bottom whenever messages change
+  // Boutique: auto-connect the house ``sdag_…`` (master stylist key) — no Agents hub required.
   useEffect(() => {
+    if (!boutiqueMode || !authSessionId) {
+      setHouseAgentKey(null);
+      return;
+    }
+    const cached = readCachedHouseAgentKey();
+    if (cached) {
+      setHouseAgentKey(cached);
+    }
+    let cancelled = false;
+    setHouseKeyLoading(true);
+    fetchHouseAgentKey(authSessionId)
+      .then((token) => {
+        if (!cancelled) setHouseAgentKey(token);
+      })
+      .catch(() => {
+        if (!cancelled) setHouseAgentKey(null);
+      })
+      .finally(() => {
+        if (!cancelled) setHouseKeyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [boutiqueMode, authSessionId]);
+
+  // Snap to bottom as soon as the panel mounts (bubble / SD_CHAT_OPEN_EVENT).
+  useLayoutEffect(() => {
+    if (!open) return;
+    bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      if (innerRaf) cancelAnimationFrame(innerRaf);
+    };
+  }, [open]);
+
+  // Scroll when conversation grows while the panel is open.
+  useEffect(() => {
+    if (!open) return;
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messages, loading, pendingImage]);
 
@@ -161,6 +214,23 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
         setSendBlockedHint(null);
         sendHintTimerRef.current = null;
       }, 5000);
+      return;
+    }
+
+    if (boutiqueMode && !houseAgentKey) {
+      if (sendHintTimerRef.current) clearTimeout(sendHintTimerRef.current);
+      setSendBlockedHint(
+        houseKeyLoading ? 'Connecting the house stylist…' : 'House stylist unavailable. Try signing in again.',
+      );
+      sendHintTimerRef.current = setTimeout(() => {
+        setSendBlockedHint(null);
+        sendHintTimerRef.current = null;
+      }, 5000);
+      if (!houseKeyLoading && authSessionId) {
+        void fetchHouseAgentKey(authSessionId)
+          .then(setHouseAgentKey)
+          .catch(() => {});
+      }
       return;
     }
 
@@ -200,18 +270,34 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
       // Use streaming to show thinking process
       const imageId = hasImage
-        ? await chatApi.uploadImageBrowserSession(imageToSend!.file, authSessionId).then((r) => r.image_id)
+        ? boutiqueMode && houseAgentKey
+          ? await chatApi.uploadImage(imageToSend!.file, houseAgentKey).then((r) => r.image_id)
+          : await chatApi.uploadImageBrowserSession(imageToSend!.file, authSessionId).then((r) => r.image_id)
         : undefined;
 
-      const stream = chatApi.chatStreamBrowserSession(
-        text || (hasImage ? 'Find items similar to this image' : ''),
-        imageId,
-        chatSessionId,
-        authSessionId,
-        shopContextForChatRequest({ gender, category, query }),
-        authSessionId,
-        historyForApi,
-      );
+      const messageText = text || (hasImage ? 'Find items similar to this image' : '');
+      const shopCtx = shopContextForChatRequest({ gender, category, query });
+
+      const stream =
+        boutiqueMode && houseAgentKey
+          ? chatApi.chatStream(
+              messageText,
+              imageId,
+              chatSessionId,
+              authSessionId,
+              shopCtx,
+              houseAgentKey,
+              historyForApi,
+            )
+          : chatApi.chatStreamBrowserSession(
+              messageText,
+              imageId,
+              chatSessionId,
+              authSessionId,
+              shopCtx,
+              authSessionId,
+              historyForApi,
+            );
 
       let finalReply = '';
       let products: chatApi.Product[] = [];
@@ -288,7 +374,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
         sseFinalFingerprintRef.current = null;
         addMessage({
           role: 'assistant',
-          content: 'No default agent selected.',
+          content: emptyStylistTurnMessage({ boutique: boutiqueMode }),
         });
       } else {
         sseFinalFingerprintRef.current = null;
@@ -297,7 +383,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
       console.error('Chat error:', err);
       addMessage({
         role: 'assistant',
-        content: userFacingChatSendError(err),
+        content: userFacingChatSendError(err, { boutique: boutiqueMode }),
       });
     } finally {
       setLoading(false);
@@ -332,9 +418,11 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
           <div className="chat-header">
             <div className="chat-header-info">
               <span className="chat-title">Stylist</span>
-              <span className={`chat-status ${connected ? 'online' : 'offline'}`}>
-                {connected ? 'Live' : 'Offline'}
-              </span>
+              {atelierUi && (
+                <span className={`chat-status ${connected ? 'online' : 'offline'}`}>
+                  {connected ? 'Live' : 'Offline'}
+                </span>
+              )}
             </div>
             {!embedded && (
               <button className="chat-close" onClick={() => setOpen(false)} aria-label="Close chat">
@@ -343,16 +431,22 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
             )}
           </div>
 
-          <p className="chat-realtime-caption" role="status">
-            {connected
-              ? 'Live WebSocket is up for this chat session — stylist replies and product cards can update here in real time.'
-              : 'Live WebSocket disconnected — reconnecting… Real-time updates in this panel will resume when the link is back.'}
-          </p>
+          {atelierUi && (
+            <p className="chat-realtime-caption" role="status">
+              {connected
+                ? 'Live WebSocket is up for this chat session — stylist replies and product cards can update here in real time.'
+                : 'Live WebSocket disconnected — reconnecting… Real-time updates in this panel will resume when the link is back.'}
+            </p>
+          )}
 
           {!session && (
             <div className="chat-patron-hint" role="note">
               <Link to="/sign-in">Sign in</Link>
-              <span> to send messages. Your session sends each turn to the API; the live WebSocket on this chat session delivers stylist updates into the thread in real time.</span>
+              <span>
+                {atelierUi
+                  ? ' to send messages. Your session sends each turn to the API; the live WebSocket on this chat session delivers stylist updates into the thread in real time.'
+                  : ' to send messages and chat with the house stylist.'}
+              </span>
             </div>
           )}
 

@@ -82,6 +82,7 @@ from smtp_mail import (
 
 import agent_api_keys
 import agent_invites
+import house_agent_key
 from agent_socket_bridge import (
     AGENT_SERVICE_ROOM,
     DEPLOYMENT_STATS_ROOM,
@@ -1102,6 +1103,21 @@ async def auth_list_agent_api_keys(session_id: Optional[str] = Depends(_browser_
         raise HTTPException(status_code=401, detail="Invalid session")
     keys = agent_api_keys.list_keys(user.email)
     return {"keys": keys}
+
+
+@api_router.get("/auth/house-agent-key")
+async def auth_house_agent_key(session_id: Optional[str] = Depends(_browser_session_id)):
+    """
+    Return the patron's auto-provisioned **house stylist** ``sdag_…`` (boutique corner chat).
+    Created on first request; stored server-side so the SPA does not need the Agents hub.
+    """
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    token = house_agent_key.get_or_create_house_agent_key(user.email)
+    return {"token": token, "label": house_agent_key.HOUSE_AGENT_LABEL}
 
 
 @api_router.delete("/auth/agent-api-keys/{key_id}")

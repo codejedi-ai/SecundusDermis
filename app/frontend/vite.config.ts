@@ -1,6 +1,29 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
+const BACKEND_TARGET = 'http://localhost:8000'
+
+/** Shared proxy for dev server and `vite preview` — same paths as FastAPI / run.sh prod. */
+const backendProxy = {
+  '/api': {
+    target: BACKEND_TARGET,
+    changeOrigin: true,
+  },
+  '/socket.io': {
+    target: BACKEND_TARGET,
+    changeOrigin: true,
+    ws: true,
+  },
+  '/images': {
+    target: BACKEND_TARGET,
+    changeOrigin: true,
+  },
+  '/uploads': {
+    target: BACKEND_TARGET,
+    changeOrigin: true,
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -15,25 +38,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    // Contract: paths (/api/..., /socket.io, /images) stay the same; only ``target`` host/port
-    // changes per machine (e.g. another dev box IP). Do not rewrite paths here.
-    proxy: {
-      // Forward ``/api`` unchanged (same path on FastAPI: ``/api/...``).
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      // Socket.IO when VITE_API_URL is unset (socket-context uses page origin + /socket.io)
-      '/socket.io': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-      },
-      // Product images served by FastAPI's StaticFiles mount
-      '/images': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-    },
+    proxy: backendProxy,
+  },
+  preview: {
+    proxy: backendProxy,
   },
 })

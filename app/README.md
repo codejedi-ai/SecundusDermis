@@ -8,7 +8,7 @@ From **`app/`**:
 
 ```bash
 ./run.sh dev          # API :8000 + Vite :5173 (recommended for development)
-./run.sh prod         # build dist/ then API only on :8000 (serves UI + API)
+./run.sh prod         # build dist/, agent :8765 + API :8000 (serves UI + API + stylist)
 ./run.sh build-only   # only rebuild dist/
 ```
 

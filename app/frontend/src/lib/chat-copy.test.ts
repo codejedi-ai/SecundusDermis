@@ -6,13 +6,13 @@ describe('userFacingChatSendError', () => {
     expect(userFacingChatSendError(new Error('Failed to fetch'))).toContain('Could not reach the API');
   });
 
-  it('maps 401/403 to key guidance', () => {
-    expect(userFacingChatSendError(new Error('Stream failed: 401 Unauthorized'))).toContain('AI agents');
+  it('maps 401/403 to session guidance', () => {
+    expect(userFacingChatSendError(new Error('Stream failed: 401 Unauthorized'))).toContain('signing in');
   });
 
-  it('maps 503 to no default agent', () => {
-    expect(userFacingChatSendError(new Error('Stream failed: 503 Service Unavailable'))).toBe(
-      'No default agent selected.',
-    );
+  it('maps 503 to house stylist hint in boutique', () => {
+    expect(
+      userFacingChatSendError(new Error('Stream failed: 503 Service Unavailable'), { boutique: true }),
+    ).toContain('house stylist');
   });
 });

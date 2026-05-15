@@ -8,7 +8,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { parseApiErrorDetail } from './api-error';
 import { API_BASE } from './api-base';
-import { parseExperienceMode, type ExperienceMode } from './experience-mode';
+import { clearHouseAgentKeyCache, fetchHouseAgentKey } from './house-agent-key';
+import { isAtelierExperience, parseExperienceMode, type ExperienceMode } from './experience-mode';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -155,6 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setSession({ session_id: data.session_id, user: u })
           setUser(u)
+          if (!isAtelierExperience(u)) {
+            void fetchHouseAgentKey(data.session_id).catch(() => {})
+          }
         }
       })
       .catch(() => {})
@@ -253,6 +257,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(session);
     setUser(user);
 
+    if (!isAtelierExperience(user)) {
+      void fetchHouseAgentKey(data.session_id).catch(() => {})
+    }
+
     // Sync any local messages to backend after login
     syncLocalMessagesToBackend(data.session_id, user.email);
   };
@@ -270,6 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     deleteCookie(SESSION_COOKIE)
+    clearHouseAgentKeyCache()
     setSession(null)
     setUser(null)
   }
