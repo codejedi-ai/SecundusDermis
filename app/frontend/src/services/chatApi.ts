@@ -1,7 +1,11 @@
 /**
- * Shop + Socket.IO types, and **patron-only** in-browser chat HTTP helpers.
- * Streaming uses ``POST /api/patron/agent/chat/stream`` with ``Authorization: Bearer <sdag_…>`` only.
- * See ``GET /api/agent-manifest.md`` and ``lib/patron-agent-chat-key.ts`` (local key storage).
+ * Shop + Socket.IO types, and chat HTTP helpers.
+ *
+ * **Signed-in browser** — ``POST /api/browser/agent/chat/stream`` + image upload (``session-id`` / cookie).
+ * **External integrations** — same chat body with ``Authorization: Bearer <sdag_…>`` on ``/api/patron/agent/*``.
+ *
+ * SSE carries stream tokens from the API. **Socket.IO** on the same ``session_id`` pushes stylist envelopes
+ * (``sd_stylist_message``) so the chat panel updates replies and product cards **in real time** alongside the stream.
  */
 
 import { API_BASE, productImageUrl } from '../lib/api-base';
@@ -88,8 +92,6 @@ export interface StylistWsReplySnapshot {
   filter: Record<string, unknown>;
 }
 
-// ── In-browser patron chat (sdag_… key) ───────────────────────────────────────
-
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -108,6 +110,37 @@ export type ChatStreamEvent =
       filter?: ShopFilter;
       tools_used?: string[];
     };
+
+async function* parseChatSse(response: Response): AsyncGenerator<ChatStreamEvent> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data) as ChatStreamEvent;
+          yield parsed;
+        } catch {
+          console.warn('Failed to parse stream event:', data);
+        }
+      }
+    }
+  }
+}
 
 export async function checkHealth(): Promise<boolean> {
   try {
@@ -128,6 +161,26 @@ export async function uploadImage(
     method: 'POST',
     headers: { Authorization: `Bearer ${patronAgentApiKey}` },
     body: form,
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => r.statusText);
+    throw new Error(`${r.status} ${text}`);
+  }
+  return r.json() as Promise<{ image_id: string; message: string }>;
+}
+
+/** Image upload for the signed-in SPA (session cookie or ``session-id`` header). */
+export async function uploadImageBrowserSession(
+  file: File,
+  browserSessionId: string,
+): Promise<{ image_id: string; message: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const r = await fetch(`${API_BASE}/browser/agent/image/upload`, {
+    method: 'POST',
+    headers: { 'session-id': browserSessionId },
+    body: form,
+    credentials: 'include',
   });
   if (!r.ok) {
     const text = await r.text().catch(() => r.statusText);
@@ -167,32 +220,40 @@ export async function* chatStream(
     throw new Error(`Stream failed: ${response.status} ${text}`);
   }
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
+  yield* parseChatSse(response);
+}
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+/** Stylist chat stream for the signed-in SPA (session cookie or ``session-id`` header). */
+export async function* chatStreamBrowserSession(
+  message: string,
+  imageId: string | undefined,
+  sessionId: string,
+  authSessionId: string | undefined,
+  shopContext: ShopContextPayload | undefined,
+  browserSessionId: string,
+  history: ChatMessage[] = [],
+): AsyncGenerator<ChatStreamEvent> {
+  const response = await fetch(`${API_BASE}/browser/agent/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'session-id': browserSessionId,
+    },
+    body: JSON.stringify({
+      message,
+      image_id: imageId ?? null,
+      history,
+      session_id: sessionId,
+      auth_session_id: authSessionId ?? null,
+      shop_context: shopContext ?? null,
+    }),
+    credentials: 'include',
+  });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data) as ChatStreamEvent;
-          yield parsed;
-        } catch {
-          console.warn('Failed to parse stream event:', data);
-        }
-      }
-    }
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new Error(`Stream failed: ${response.status} ${text}`);
   }
+
+  yield* parseChatSse(response);
 }

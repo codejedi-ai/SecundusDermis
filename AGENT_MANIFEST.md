@@ -1,5 +1,9 @@
 # Secundus Dermis (SD) — Agent & API integration manifest
 
+**Bring your own agent (BYOA):** the Secundus Dermis **API does not host the stylist LLM**. Operators set **`AGENT_SERVICE_URL`** (and **`AGENT_INTERNAL_SECRET`**) to **their** stylist process; this repository includes a **reference** implementation under `app/agent`, which you run and operate yourself.
+
+**Three lanes (not “one WebSocket from browser to model”):** (1) **Patron chat tokens** — browser → API → stylist over **HTTP + SSE** (`POST /api/patron/agent/chat/stream` proxied to the agent’s HTTP stream). (2) **Patron Socket.IO** — browser ↔ API only, room `sd_{session_id}`, for live UI events (`sd_stylist_message`, etc.); the stylist pushes via the API into that room. (3) **Optional agent duplex** — Socket.IO **stylist process ↔ API**, room `sd_agent_service`, for `sd_bridge` / operator control; the browser does not join this room.
+
 Machine- and human-readable contract for **external stylist processes** and **evaluation agents** talking to the Secundus Dermis backend.
 
 ---
@@ -10,7 +14,7 @@ Machine- and human-readable contract for **external stylist processes** and **ev
 |-------|---------|---------|
 | **Backend (SD API)** | `app/backend` FastAPI + Socket.IO | Catalog, auth, patron chat/image routes (`/patron/agent/*`), internal agent routes, Socket.IO rooms `sd_{session_id}`. Legacy ``/api/chat*`` and ``/api/image/upload`` return **410**. |
 | **Patron (browser)** | React + `socket.io-client` | Joins room via `join_session`, receives **`sd_stylist_message`** (schema `sd.stylist.v1`; actions include `shop_sync`, `catalog_results`, …), plus legacy **`ui_action`** and other non-stylist events as needed. |
-| **Standalone stylist agent** | `app/agent/secundus_agent` | Holds `GEMINI_API_KEY`; when `AGENT_SERVICE_URL` is set, the **backend** proxies **`POST /api/patron/agent/chat/stream`** here. Agent calls backend **HTTP** `/internal/agent/*` for catalog/RAG; optional **Socket.IO** as trusted `agent` for patron-room fan-out via **`agent_emit`** + **`sd_stylist_message`** envelopes, and duplex service room `sd_agent_service` / `sd_bridge` (see §5). |
+| **Standalone stylist agent** | `app/agent/secundus_agent` (reference; you host it) | Holds your `GEMINI_API_KEY`; when **`AGENT_SERVICE_URL`** points here, the **backend** proxies **`POST /api/patron/agent/chat/stream`**. Agent calls backend **HTTP** `/internal/agent/*` for catalog/RAG; optional **Socket.IO** as trusted `agent` for patron-room fan-out via **`agent_emit`** + **`sd_stylist_message`** envelopes, and duplex service room `sd_agent_service` / `sd_bridge` (see §5). |
 
 ---
 

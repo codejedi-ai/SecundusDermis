@@ -42,6 +42,11 @@ def forget_patron_agent_socket(sid: str) -> None:
             _patron_agent_sid_by_key_hash.pop(h, None)
 
 
+def connected_patron_agent_key_hashes_snapshot() -> set[str]:
+    """Best-effort snapshot of token hashes that currently have an active agent Socket.IO session."""
+    return set(_patron_agent_sid_by_key_hash.keys())
+
+
 async def emit_to_agent_connections(sio: Any, event: str, data: dict[str, Any] | None) -> None:
     """Emit an event to every trusted agent Socket.IO connection."""
     await sio.emit(event, dict(data or {}), room=AGENT_SERVICE_ROOM)

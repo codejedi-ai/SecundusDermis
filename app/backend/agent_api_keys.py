@@ -86,6 +86,21 @@ def list_keys(email: str) -> list[dict[str, Any]]:
     return out
 
 
+def append_agent_socket_online_flags(keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach ``agent_socket_online`` to each key row (Socket.IO agent authenticated with that key)."""
+    from agent_socket_bridge import connected_patron_agent_key_hashes_snapshot
+
+    online = connected_patron_agent_key_hashes_snapshot()
+    by_id: dict[str, Any] = _load_keys().get("keys") or {}
+    merged: list[dict[str, Any]] = []
+    for k in keys:
+        rid = k.get("id")
+        rec = by_id.get(rid) if isinstance(rid, str) else None
+        th = (rec or {}).get("token_hash") if isinstance(rec, dict) else None
+        merged.append({**k, "agent_socket_online": bool(th and th in online)})
+    return merged
+
+
 def patron_has_any_key(email: str) -> bool:
     """True if this patron has at least one active (non-revoked) agent API key."""
     return len(list_keys(email)) > 0

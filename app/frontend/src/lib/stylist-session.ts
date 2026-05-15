@@ -1,6 +1,6 @@
 /**
- * Browser-persisted chat `session_id` (`POST /api/patron/agent/chat/stream` + Socket.IO `sd_<id>`).
- * Patron transcripts still use auth `session-id` on `/conversations` — see convo-context.
+ * Browser-persisted chat `session_id` (`POST /api/browser/agent/chat/stream` + Socket.IO `sd_<id>`).
+ * Account transcripts still use auth `session-id` on `/conversations` — see convo-context.
  */
 
 export const STYLIST_SESSION_STORAGE_KEY = 'sd_stylist_session_id';
@@ -11,7 +11,7 @@ export interface StylistAgentOption {
   readonly hint: string;
 }
 
-/** Built-in threads users can pick as their default patron chat session. */
+/** Built-in threads users can pick as their default stylist chat session. */
 export const STYLIST_AGENT_OPTIONS: readonly StylistAgentOption[] = [
   {
     id: 'default',

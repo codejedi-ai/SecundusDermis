@@ -48,7 +48,7 @@ import ResetPassword from './pages/ResetPassword'
 import './styles/shop.css'
 
 /**
- * SocketBridge — reads persisted chat ``session_id`` (same as ``POST /api/patron/agent/chat/stream``)
+ * SocketBridge — reads persisted chat ``session_id`` (same as ``POST /api/browser/agent/chat/stream``)
  * and scopes Socket.IO ``join_session`` / room ``sd_<id>`` for live agent pushes.
  */
 function SocketBridge({ children }: { children: React.ReactNode }) {
@@ -116,7 +116,7 @@ function UiActionExecutor() {
 }
 
 /**
- * ShopSocketSync — applies ``sd_stylist_message`` (action ``shop_sync``) from the patron agent so React shop state
+ * ShopSocketSync — applies ``sd_stylist_message`` (action ``shop_sync``) from the stylist agent so React shop state
  * matches backend shop_state whenever manage_sidebar / keyword_search runs.
  */
 function ShopSocketSync() {
@@ -181,6 +181,10 @@ function AccountLayout() {
     const s = searchParams.get('section');
     if (s === 'agent-api-keys') {
       navigate('/agents?panel=api-keys', { replace: true });
+      return;
+    }
+    if (s === 'chat-logs') {
+      navigate('/agents?panel=chat-logs', { replace: true });
       return;
     }
     if (s && ACCOUNT_SECTION_IDS.includes(s)) {

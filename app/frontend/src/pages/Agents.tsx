@@ -19,21 +19,20 @@ import {
   sanitizeStylistSessionId,
 } from '../lib/stylist-session'
 import AgentApiKeysPanel from '../components/AgentApiKeysPanel'
+import ChatLogsPanel from '../components/ChatLogsPanel'
 import '../styles/agents.css'
 
 const PRESET_ID_SET = new Set(STYLIST_AGENT_OPTIONS.map((o) => o.id))
 
 const SESSION_PREFIX = 'session-' as const
 
-const INFRA_AGENTS = [
-  { id: 'patron-gemini', label: 'Patron agent (Gemini)', icon: Bot },
-  { id: 'socket-duplex', label: 'Agent duplex (Socket.IO)', icon: Radio },
-] as const
+const INFRA_AGENTS = [{ id: 'agent-socket', label: 'WebSocket agents', icon: Radio }] as const
 
 function normalizePanel(raw: string | null): string {
   if (!raw || raw === 'overview') return 'overview'
-  if (raw === 'api-keys') return 'api-keys'
-  if (raw === 'patron-gemini' || raw === 'socket-duplex') return raw
+  if (raw === 'chat-logs') return 'chat-logs'
+  if (raw === 'api-keys' || raw === 'agents') return 'api-keys'
+  if (raw === 'patron-gemini' || raw === 'socket-duplex' || raw === 'agent-socket') return 'agent-socket'
   if (raw.startsWith(SESSION_PREFIX)) {
     const sid = raw.slice(SESSION_PREFIX.length)
     if (PRESET_ID_SET.has(sid)) return raw
@@ -53,13 +52,11 @@ function AgentsDefaultStylistPicker() {
   return (
     <section className="agents-default-agent" aria-labelledby="agents-default-agent-heading">
       <h2 id="agents-default-agent-heading" className="agents-default-agent-title">
-        Chat session for patron stream
+        Chat session for stylist / shop stream
       </h2>
       <p className="agents-default-agent-lead">
-        This browser sends the chosen id as <code className="agents-hub-code">session_id</code> on{' '}
-        <code className="agents-hub-code">POST /api/patron/agent/chat/stream</code> (with your <code className="agents-hub-code">sdag_…</code> key) and joins Socket.IO room{' '}
-        <code className="agents-hub-code">sd_&lt;session_id&gt;</code>. Account transcripts still use{' '}
-        <code className="agents-hub-code">GET /api/conversations</code> (sign-in session), not this id.
+        This id groups stylist chat and live shop updates for this browser. It is separate from your sign-in account
+        history. Pick a preset or set your own label below.
       </p>
 
       <div className="agents-default-agent-row">
@@ -127,103 +124,100 @@ function AgentsDefaultStylistPicker() {
 }
 
 function AgentsOnlineStatus({
-  stats,
-  filter,
+  patronSocketConnected,
+  registeredAgents,
+  registeredAgentsLoading,
 }: {
-  stats: fashionApi.CatalogStats
-  filter?: 'patron-gemini' | 'socket-duplex' | null
+  patronSocketConnected: boolean
+  registeredAgents: fashionApi.AgentApiKeyMeta[]
+  registeredAgentsLoading: boolean
 }) {
-  const socketCount = stats.agent_socket_online_count ?? 0
-  const socketOnline = socketCount > 0
-
-  const stylistHttpOk = stats.agent_proxy === true && stats.stylist_agent_http_reachable === true
-  const stylistHttpWarn = stats.agent_proxy === true && stats.stylist_agent_http_reachable === false
-  const stylistDotClass = stylistHttpOk ? 'on' : stylistHttpWarn ? 'warn' : 'off'
-
-  let stylistLabel: string
-  let stylistDetail: string
-  if (!stats.agent_proxy) {
-    stylistLabel = 'Offline'
-    stylistDetail = 'Patron agent process is not configured on this API (no AGENT_SERVICE_URL).'
-  } else if (stats.stylist_agent_http_reachable === true) {
-    stylistLabel = 'Online'
-    stylistDetail = 'Standalone patron agent is responding on its HTTP /health endpoint.'
-  } else if (stats.stylist_agent_http_reachable === false) {
-    stylistLabel = 'Unreachable'
-    stylistDetail = 'AGENT_SERVICE_URL is set but the patron agent process did not respond to /health.'
-  } else {
-    stylistLabel = 'Unknown'
-    stylistDetail = 'Patron agent HTTP client is not active in this API process.'
-  }
-
-  let socketLabel: string
-  let socketDetail: string
-  if (socketOnline) {
-    socketLabel = socketCount === 1 ? '1 connection online' : `${socketCount} connections online`
-    socketDetail =
-      'Trusted agent client(s) joined the Socket.IO duplex room (sd_agent_service). Optional; HTTP-only agent still works.'
-  } else {
-    socketLabel = 'None online'
-    socketDetail =
-      'No trusted Socket.IO agent clients in sd_agent_service. Enable SD_AGENT_SOCKET / SD_SOCKETIO_EMIT on the agent if you use the duplex bridge.'
-  }
-
-  const patronRow = (
-    <li className="agents-live-status-row">
-      <span className={`agents-live-status-dot agents-live-status-dot--${stylistDotClass}`} aria-hidden />
-      <div>
-        <strong className="agents-live-status-name">Patron agent (Gemini)</strong>
-        <span
-          className={`agents-live-status-badge ${
-            stylistHttpOk ? 'agents-live-status-badge--on' : stylistHttpWarn ? 'agents-live-status-badge--warn' : ''
-          }`}
-        >
-          {stylistLabel}
-        </span>
-        <p className="agents-live-status-desc">{stylistDetail}</p>
-      </div>
-    </li>
-  )
-
-  const socketRow = (
+  const browserRow = (
     <li className="agents-live-status-row">
       <span
-        className={`agents-live-status-dot ${socketOnline ? 'agents-live-status-dot--on' : 'agents-live-status-dot--off'}`}
+        className={`agents-live-status-dot ${patronSocketConnected ? 'agents-live-status-dot--on' : 'agents-live-status-dot--off'}`}
         aria-hidden
       />
       <div>
-        <strong className="agents-live-status-name">Agent duplex (Socket.IO)</strong>
-        <span className={`agents-live-status-badge ${socketOnline ? 'agents-live-status-badge--on' : ''}`}>{socketLabel}</span>
-        <p className="agents-live-status-desc">{socketDetail}</p>
+        <strong className="agents-live-status-name">Browser (shop session)</strong>
+        <span
+          className={`agents-live-status-badge ${
+            patronSocketConnected ? 'agents-live-status-badge--on' : ''
+          }`}
+        >
+          {patronSocketConnected ? 'Connected' : 'Disconnected'}
+        </span>
+        <p className="agents-live-status-desc">
+          Live shop and catalog hints from this site while you use the app.
+        </p>
       </div>
     </li>
   )
 
+  const agentRows = registeredAgents.map((k) => {
+    const on = Boolean(k.agent_socket_online)
+    return (
+      <li key={k.id} className="agents-live-status-row">
+        <span className={`agents-live-status-dot ${on ? 'agents-live-status-dot--on' : 'agents-live-status-dot--off'}`} aria-hidden />
+        <div>
+          <strong className="agents-live-status-name">Onboarded agent — {k.label || 'Unlabeled'}</strong>
+          <span className={`agents-live-status-badge ${on ? 'agents-live-status-badge--on' : ''}`}>
+            {on ? 'Connected' : 'Disconnected'}
+          </span>
+          <p className="agents-live-status-desc">
+            {on ? 'Live link to the platform for this agent.' : 'Not connected right now.'}
+          </p>
+        </div>
+      </li>
+    )
+  })
+
+  const agentsSection =
+    registeredAgentsLoading ? (
+      <li className="agents-live-status-row">
+        <span className="agents-live-status-dot agents-live-status-dot--off" aria-hidden />
+        <div>
+          <strong className="agents-live-status-name">Your onboarded agents</strong>
+          <span className="agents-live-status-badge">Loading…</span>
+          <p className="agents-live-status-desc">Fetching connection state…</p>
+        </div>
+      </li>
+    ) : registeredAgents.length === 0 ? (
+      <li className="agents-live-status-row">
+        <span className="agents-live-status-dot agents-live-status-dot--off" aria-hidden />
+        <div>
+          <strong className="agents-live-status-name">Your onboarded agents</strong>
+          <span className="agents-live-status-badge">None</span>
+          <p className="agents-live-status-desc">
+            No agents onboarded yet. Use <strong>Onboarded agents</strong> in the sidebar to create an invite and add
+            one.
+          </p>
+        </div>
+      </li>
+    ) : (
+      agentRows
+    )
+
   return (
     <div className="agents-live-status" role="status" aria-live="polite">
-      <h2 className="agents-live-status-heading">Deployment status</h2>
+      <h2 className="agents-live-status-heading">WebSocket agents</h2>
       <p className="agents-live-status-intro">
-        From this API host (not your personal <code className="agents-hub-code">sdag_…</code> keys). Updates when trusted agent
-        sockets connect or disconnect; initial load probes patron agent HTTP /health.
+        <strong>Green</strong> means that connection is live. Each onboarded agent can have one active link at a time.
       </p>
       <ul className="agents-live-status-list">
-        {filter === 'socket-duplex' ? socketRow : filter === 'patron-gemini' ? patronRow : (
-          <>
-            {patronRow}
-            {socketRow}
-          </>
-        )}
+        {browserRow}
+        {agentsSection}
       </ul>
     </div>
   )
 }
 
 function AgentsHubCards({
-  catalogStats,
-  onOpenApiKeys,
+  onOpenRegisterAgents,
+  onOpenChatLogs,
 }: {
-  catalogStats: fashionApi.CatalogStats | null
-  onOpenApiKeys: () => void
+  onOpenRegisterAgents: () => void
+  onOpenChatLogs: () => void
 }) {
   return (
     <div className="agents-hub-grid agents-hub-grid--workspace">
@@ -231,11 +225,10 @@ function AgentsHubCards({
         <div className="agents-hub-card-icon" aria-hidden>
           <Bot size={22} strokeWidth={1.75} />
         </div>
-        <h3 className="agents-hub-card-title">Patron chat (Gemini)</h3>
+        <h3 className="agents-hub-card-title">Stylist chat</h3>
         <p className="agents-hub-card-desc">
-          {catalogStats?.agent_proxy === true
-            ? 'This deployment proxies patron chat to the standalone Gemini process — open the panel with your sdag_… key saved locally.'
-            : 'When the API is configured with AGENT_SERVICE_URL, patron chat runs on the dedicated process. Until then, catalog search still works from the shop.'}
+          While signed in, each message goes through this site to the stylist. The same live WebSocket session keeps the
+          chat panel updated in real time with replies, product highlights, and shop hints.
         </p>
         <div className="agents-hub-card-actions">
           <button
@@ -243,7 +236,7 @@ function AgentsHubCards({
             className="agents-hub-card-link agents-hub-card-link--as-button"
             onClick={() => window.dispatchEvent(new CustomEvent(SD_CHAT_OPEN_EVENT))}
           >
-            Open patron chat <MessageCircle size={14} aria-hidden />
+            Open stylist chat <MessageCircle size={14} aria-hidden />
           </button>
           <Link to="/shop" className="agents-hub-card-link">
             Open shop <ArrowRight size={14} aria-hidden />
@@ -256,8 +249,8 @@ function AgentsHubCards({
         </div>
         <h3 className="agents-hub-card-title">Live channel</h3>
         <p className="agents-hub-card-desc">
-          Patron chat can receive <code className="agents-hub-code">shop_sync</code>, product highlights, and navigation hints over Socket.IO — same{' '}
-          <code className="agents-hub-code">session_id</code> as the stream request when connected.
+          Same <code className="agents-hub-code">session_id</code> as stylist chat. When the browser WebSocket row is green, this tab is receiving events on{' '}
+          <code className="agents-hub-code">/socket.io</code>. Stylist duplex (<code className="agents-hub-code">sd_agent_service</code>) is a separate agent-side connection.
         </p>
         <span className="agents-hub-card-meta">
           Path: <code className="agents-hub-code">/socket.io</code>
@@ -267,12 +260,12 @@ function AgentsHubCards({
         <div className="agents-hub-card-icon" aria-hidden>
           <Key size={22} strokeWidth={1.75} />
         </div>
-        <h3 className="agents-hub-card-title">Patron API keys</h3>
+        <h3 className="agents-hub-card-title">Onboarded agents</h3>
         <p className="agents-hub-card-desc">
-          Mint and revoke <code className="agents-hub-code">sdag_…</code> keys for scripts and in-browser patron chat — use the control panel → API keys.
+          See who is connected to your account, send invites, and remove access when you need to.
         </p>
-        <button type="button" className="agents-hub-card-link agents-hub-card-link--as-button" onClick={onOpenApiKeys}>
-          Open API keys <ArrowRight size={14} aria-hidden />
+        <button type="button" className="agents-hub-card-link agents-hub-card-link--as-button" onClick={onOpenRegisterAgents}>
+          Open list <ArrowRight size={14} aria-hidden />
         </button>
       </article>
       <article className="agents-hub-card">
@@ -283,20 +276,43 @@ function AgentsHubCards({
         <p className="agents-hub-card-desc">
           When signed in, widget messages sync under <code className="agents-hub-code">GET /api/conversations</code>.
         </p>
-        <Link to="/account?section=chat-logs" className="agents-hub-card-link">
+        <button type="button" className="agents-hub-card-link agents-hub-card-link--as-button" onClick={onOpenChatLogs}>
           View chat logs <ArrowRight size={14} aria-hidden />
-        </Link>
+        </button>
       </article>
     </div>
   )
 }
 
 const Agents = () => {
-  const { user } = useAuth()
+  const { user, session } = useAuth()
   const { chatSessionId, setStylistSessionId } = useConvo()
   const { connected, emit, lastDeploymentStats } = useSocket()
   const [searchParams, setSearchParams] = useSearchParams()
   const panel = useMemo(() => normalizePanel(searchParams.get('panel')), [searchParams])
+
+  const [registeredAgents, setRegisteredAgents] = useState<fashionApi.AgentApiKeyMeta[]>([])
+  const [registeredAgentsLoading, setRegisteredAgentsLoading] = useState(false)
+
+  const sessionId = session?.session_id
+
+  const refreshRegisteredAgents = useCallback(() => {
+    if (!sessionId) {
+      setRegisteredAgents([])
+      setRegisteredAgentsLoading(false)
+      return
+    }
+    setRegisteredAgentsLoading(true)
+    fashionApi
+      .listRegisteredAgents(sessionId)
+      .then((r) => setRegisteredAgents(r.agents ?? []))
+      .catch(() => setRegisteredAgents([]))
+      .finally(() => setRegisteredAgentsLoading(false))
+  }, [sessionId])
+
+  useEffect(() => {
+    refreshRegisteredAgents()
+  }, [refreshRegisteredAgents, lastDeploymentStats])
 
   const setPanel = useCallback(
     (id: string) => {
@@ -305,6 +321,7 @@ const Agents = () => {
         (prev) => {
           const p = new URLSearchParams(prev)
           if (next === 'overview') p.delete('panel')
+          else if (next === 'api-keys') p.set('panel', 'agents')
           else p.set('panel', next)
           return p
         },
@@ -313,16 +330,6 @@ const Agents = () => {
     },
     [setSearchParams],
   )
-
-  const [catalogStats, setCatalogStats] = useState<fashionApi.CatalogStats | null>(null)
-
-  useEffect(() => {
-    fashionApi.getCatalogStats().then(setCatalogStats).catch(() => setCatalogStats(null))
-  }, [])
-
-  useEffect(() => {
-    if (lastDeploymentStats) setCatalogStats(lastDeploymentStats)
-  }, [lastDeploymentStats])
 
   useEffect(() => {
     if (!connected) return
@@ -340,20 +347,17 @@ const Agents = () => {
   let workspaceTitle = 'Overview'
   let workspaceLead: ReactNode = (
     <p className="agents-workspace-lead">
-      Private hub for <strong>{user?.email ?? 'your account'}</strong>. Pick an agent or thread in the control panel, manage{' '}
-      <strong>API keys</strong>, and open patron chat when the deployment is online.
+      Private hub for <strong>{user?.email ?? 'your account'}</strong>. Check live connections under WebSocket agents, manage onboarded agents, pick your stylist chat session, and open stylist chat when you want.
     </p>
   )
 
   let workspaceBody: ReactNode = (
     <>
-      {catalogStats ? (
-        <AgentsOnlineStatus stats={catalogStats} />
-      ) : (
-        <p className="agents-live-status-loading" role="status">
-          Checking deployment status…
-        </p>
-      )}
+      <AgentsOnlineStatus
+        patronSocketConnected={connected}
+        registeredAgents={registeredAgents}
+        registeredAgentsLoading={registeredAgentsLoading}
+      />
       <div className="agents-workspace-section">
         <AgentsDefaultStylistPicker />
       </div>
@@ -365,43 +369,45 @@ const Agents = () => {
               Actions
             </h2>
           </div>
-          <AgentsHubCards catalogStats={catalogStats} onOpenApiKeys={() => setPanel('api-keys')} />
+          <AgentsHubCards onOpenRegisterAgents={() => setPanel('agents')} onOpenChatLogs={() => setPanel('chat-logs')} />
         </div>
       </section>
     </>
   )
 
   if (panel === 'api-keys') {
-    workspaceTitle = 'AI agent API keys'
-    workspaceLead = <p className="agents-workspace-lead">Generate, revoke, and store keys for patron HTTP and in-browser chat.</p>
-    workspaceBody = <AgentApiKeysPanel />
-  } else if (panel === 'patron-gemini') {
-    workspaceTitle = 'Patron agent (Gemini)'
+    workspaceTitle = 'Onboarded agents'
     workspaceLead = (
       <p className="agents-workspace-lead">
-        Standalone process that runs Gemini tool calls. Proxied from <code className="agents-hub-code">POST /api/patron/agent/chat/stream</code>.
+        Track everyone connected to your account. Pending rows are invites that have not finished setup yet.
       </p>
     )
-    workspaceBody = catalogStats ? (
-      <AgentsOnlineStatus stats={catalogStats} filter="patron-gemini" />
-    ) : (
-      <p className="agents-live-status-loading" role="status">
-        Loading…
-      </p>
-    )
-  } else if (panel === 'socket-duplex') {
-    workspaceTitle = 'Agent duplex (Socket.IO)'
+    workspaceBody = <AgentApiKeysPanel onKeysMutated={refreshRegisteredAgents} />
+  } else if (panel === 'chat-logs') {
+    workspaceTitle = 'Chat logs'
     workspaceLead = (
       <p className="agents-workspace-lead">
-        Optional trusted bridge in <code className="agents-hub-code">sd_agent_service</code> for live catalog hints and agent emits.
+        Messages saved for your account via <code className="agents-hub-code">GET /api/conversations</code> when you use stylist chat while signed in.
       </p>
     )
-    workspaceBody = catalogStats ? (
-      <AgentsOnlineStatus stats={catalogStats} filter="socket-duplex" />
-    ) : (
-      <p className="agents-live-status-loading" role="status">
-        Loading…
+    workspaceBody = (
+      <div className="agents-workspace-section agents-workspace-section--chat-logs">
+        <ChatLogsPanel />
+      </div>
+    )
+  } else if (panel === 'agent-socket') {
+    workspaceTitle = 'WebSocket agents'
+    workspaceLead = (
+      <p className="agents-workspace-lead">
+        <strong>Green</strong> dot and <strong>Connected</strong> mean that path is up. The first row is this browser; other rows are onboarded agents using the platform link.
       </p>
+    )
+    workspaceBody = (
+      <AgentsOnlineStatus
+        patronSocketConnected={connected}
+        registeredAgents={registeredAgents}
+        registeredAgentsLoading={registeredAgentsLoading}
+      />
     )
   } else if (panel.startsWith(SESSION_PREFIX)) {
     const presetId = panel.slice(SESSION_PREFIX.length)
@@ -459,25 +465,25 @@ const Agents = () => {
                 <button
                   type="button"
                   className={`agents-panel-item ${panel === 'api-keys' ? 'agents-panel-item--active' : ''}`}
-                  onClick={() => setPanel('api-keys')}
+                  onClick={() => setPanel('agents')}
                 >
                   <Key size={16} aria-hidden />
-                  <span>API keys</span>
+                  <span>Onboarded agents</span>
                 </button>
               </li>
               <li>
-                <Link
-                  to="/account?section=chat-logs"
-                  className="agents-panel-item agents-panel-item--link"
+                <button
+                  type="button"
+                  className={`agents-panel-item ${panel === 'chat-logs' ? 'agents-panel-item--active' : ''}`}
+                  onClick={() => setPanel('chat-logs')}
                 >
                   <MessageSquare size={16} aria-hidden />
                   <span>Chat logs</span>
-                  <ArrowRight size={14} className="agents-panel-item-chevron" aria-hidden />
-                </Link>
+                </button>
               </li>
             </ul>
 
-            <p className="agents-panel-nav-heading">Deployment agents</p>
+            <p className="agents-panel-nav-heading">WebSocket agents</p>
             <ul className="agents-panel-nav-list">
               {INFRA_AGENTS.map((a) => {
                 const Icon = a.icon
@@ -524,7 +530,7 @@ const Agents = () => {
               onClick={() => window.dispatchEvent(new CustomEvent(SD_CHAT_OPEN_EVENT))}
             >
               <MessageCircle size={16} aria-hidden />
-              Open patron chat
+              Open stylist chat
             </button>
           </div>
         </aside>

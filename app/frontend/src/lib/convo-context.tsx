@@ -6,7 +6,7 @@
  * - Logged-in users: messages are persisted to the backend (GET/POST/DELETE /conversations)
  *   and cached in localStorage as a fast-load fallback.
  * - Anonymous users: localStorage only.
- * - `chatSessionId` is the `session_id` for `POST /api/patron/agent/chat/stream` and Socket.IO
+ * - `chatSessionId` is the `session_id` for `POST /api/browser/agent/chat/stream` and Socket.IO
  *   `join_session` / `sd_<id>`. The user picks a default on the Agents page (persisted in
  *   `sd_stylist_session_id`); presets live in `stylist-session.ts`. Account transcripts
  *   still use the auth `session-id` header on `/conversations`, not this value.
@@ -21,7 +21,6 @@ import {
   savePersistedStylistSessionId,
   sanitizeStylistSessionId,
 } from './stylist-session';
-import { getPatronAgentChatApiKey } from './patron-agent-chat-key';
 
 /** Same as FastAPI `ChatRequest.session_id` default — used as initial preset. */
 export const DEFAULT_STYLIST_SESSION_ID = 'default';
@@ -56,16 +55,12 @@ const ATTACHE_WELCOME =
   'Shall we begin with your preferred aesthetic, or would you like me to curate a selection from the archive? ' +
   'You may also present an image and I will identify pieces that harmonize with your vision.';
 
-const PATRON_KEY_SETUP_NOTE =
-  '\n\nTo send messages, save a patron `sdag_…` key: **AI agents** → **API keys** → **Save for in-browser chat.**';
-
-/** First assistant message: attaché welcome, plus key setup only when this browser has no `sdag_…` yet. */
+/** First assistant message in the floating stylist panel. */
 export function buildInitialConvoMessage(): ConvoMessage {
-  const hasKey = Boolean(getPatronAgentChatApiKey()?.trim());
   return {
     id: 'init',
     role: 'assistant',
-    content: hasKey ? ATTACHE_WELCOME : ATTACHE_WELCOME + PATRON_KEY_SETUP_NOTE,
+    content: ATTACHE_WELCOME,
     timestamp: 0,
   };
 }
@@ -184,23 +179,6 @@ export function ConvoProvider({ children }: { children: React.ReactNode }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail, authSessionId]);
-
-  useEffect(() => {
-    const syncInit = () => {
-      setMessages((prev) => {
-        const i = prev.findIndex((m) => m.id === 'init');
-        if (i === -1) return prev;
-        const latest = buildInitialConvoMessage();
-        if (prev[i].content === latest.content) return prev;
-        const next = [...prev];
-        next[i] = { ...prev[i], content: latest.content };
-        saveLocalMessages(next, userEmail);
-        return next;
-      });
-    };
-    window.addEventListener('sd:patron-chat-key-changed', syncInit);
-    return () => window.removeEventListener('sd:patron-chat-key-changed', syncInit);
-  }, [userEmail]);
 
   // ── addMessage ─────────────────────────────────────────────────────────
 

@@ -169,7 +169,7 @@ The histogram only **orders** what keyword search already found — it never ret
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| **Agent framework** | Gemini SDK + `app/agent/stylist_loop` | Direct `generate_content` with function declarations; optional standalone agent service under `app/agent` calling the API over HTTP |
+| **Agent framework** | Gemini SDK + `app/agent/stylist_loop` (reference) | Function-calling loop you can run in-process or as a **BYOA** HTTP service under `app/agent` calling the API over `AGENT_SERVICE_URL` |
 | **LLM / VLM** | Gemini (`gemini-3.1-pro-preview-customtools`) | Function-calling for agent tools; same API key for both chat agent and image description — single dependency, single quota |
 | **Product search** | In-memory `str in str` keyword scan | 12k descriptions fit in RAM; sub-millisecond queries; zero API cost per search — ideal for a high-query demo |
 | **Image similarity** | 96-dim RGB histogram + cosine similarity | No model inference per query; computed once per image and cached lazily; sufficient colour-based visual ranking for a demo |

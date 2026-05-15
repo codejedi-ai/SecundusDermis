@@ -9,7 +9,7 @@
  *   at this browser session.
  * - Automatically reconnects on network drops.
  *
- * Events the backend may push:
+ * Events the backend may push (``sd_stylist_message`` is merged into the stylist chat panel in real time):
  *   sd_stylist_message — versioned stylist envelope (schema sd.stylist.v1); action shop_sync carries shop payload
  *   ui_action   — agent controls the frontend UI
  *   notification — toast / alert message

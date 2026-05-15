@@ -114,6 +114,18 @@
   opacity: 1;
 }
 
+/* Live WebSocket caption (under header) */
+.chat-realtime-caption {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-gray-600);
+  background: var(--color-gray-100);
+  border-bottom: 1px solid var(--color-gray-200);
+  flex-shrink: 0;
+}
+
 /* ── Messages ── */
 .chat-messages {
   flex: 1;
@@ -405,6 +417,7 @@ a.chat-product-card {
 /* ── Input row ── */
 .chat-input-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
   padding: 0.625rem 0.75rem;
@@ -609,6 +622,43 @@ a.chat-product-card {
   color: inherit;
   font-weight: 600;
   text-decoration: underline;
+}
+
+/* Neutral patron key strip (not error styling) */
+.chat-patron-hint {
+  flex-shrink: 0;
+  margin: 0 1rem 0.5rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-gray-700);
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+  border-radius: 6px;
+}
+
+.chat-patron-hint code {
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  background: var(--color-white);
+  border-radius: 4px;
+}
+
+.chat-patron-hint a {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.chat-send-block-hint {
+  flex: 1 0 100%;
+  margin: 0 0 0.25rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--color-gray-800);
+  background: var(--color-gray-100);
+  border-radius: 4px;
 }
 
 /* ── Embedded (e.g. About page) ── */

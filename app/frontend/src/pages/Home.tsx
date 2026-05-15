@@ -26,7 +26,7 @@ function buildHomeFeatures(stats: fashionApi.CatalogStats): { title: string; des
 
   const mode = stats.search_mode ?? 'keyword search'
   const titleSearch = mode.replace(/\s*\+\s*/g, ' · ')
-  const descSearch = `Server-reported retrieval stack: ${mode}. Text search scans in-memory descriptions; the chat flow can combine this with the configured agent.`
+  const descSearch = `Server-reported retrieval stack: ${mode}. Text search scans in-memory descriptions; stylist chat uses the linked agent when the operator sets AGENT_SERVICE_URL.`
 
   const ragLine =
     stats.embedding_model && stats.embedding_dim != null
@@ -137,12 +137,12 @@ const Home = () => {
                 <>
                   Secundus Dermis pairs a catalog of {catalogStats.total_products.toLocaleString()} pieces
                   with an AI assistant that routes through this deployment&apos;s search stack — describe what you
-                  want, browse filters, or use chat when the agent is enabled.
+                  want, browse filters, or use chat when your deployment links a stylist agent (AGENT_SERVICE_URL).
                 </>
               ) : (
                 <>
                   Secundus Dermis pairs the loaded catalog with an AI assistant — describe what you want,
-                  browse filters, or use chat when the agent is enabled.
+                  browse filters, or use chat when your deployment links a stylist agent (AGENT_SERVICE_URL).
                 </>
               )}
             </p>
@@ -227,7 +227,7 @@ const Home = () => {
               onClick={() => window.dispatchEvent(new CustomEvent(SD_CHAT_OPEN_EVENT))}
             >
               <MessageCircle size={16} aria-hidden style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />
-              Open patron chat
+              Open stylist chat
             </button>
           </div>
         </div>

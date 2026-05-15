@@ -7,7 +7,6 @@ import { shopContextForChatRequest } from '../lib/shopBridge';
 import { useShop } from '../lib/shop-context';
 import { useConvo, SD_CHAT_OPEN_EVENT } from '../lib/convo-context';
 import { useAuth } from '../lib/auth-context';
-import { getPatronAgentChatApiKey } from '../lib/patron-agent-chat-key';
 import { useSocket } from '../lib/socket-context';
 import {
   fingerprintProductIds,
@@ -16,8 +15,6 @@ import {
   shouldSkipDuplicateStylistReply,
 } from '../lib/stylistSocketDedupe';
 import { userFacingChatSendError } from '../lib/chat-copy';
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 const FALLBACK_IMAGE = '/img/placeholder.svg';
 
@@ -39,13 +36,14 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
   const { messages, chatSessionId, addMessage } = useConvo();
   const { session } = useAuth();
   const authSessionId = session?.session_id;
+  const [sendBlockedHint, setSendBlockedHint] = useState<string | null>(null);
+  const sendHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const embedded = variant === 'embedded';
   const [open, setOpen] = useState(embedded);
   const [input, setInput] = useState('');
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [loading, setLoading] = useState(false);
-  const [online, setOnline] = useState<boolean | null>(null);
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
   const [showThinking, setShowThinking] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -57,6 +55,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
   const { gender, category, query, setGender, setCategory } = useShop();
   const {
+    connected,
     lastStylistCatalog,
     clearStylistCatalog,
     lastStylistFound,
@@ -129,11 +128,6 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     if (embedded) setOpen(true);
   }, [embedded]);
 
-  // Check backend availability once on mount
-  useEffect(() => {
-    chatApi.checkHealth().then(setOnline);
-  }, []);
-
   useEffect(() => {
     const open = () => setOpen(true);
     window.addEventListener(SD_CHAT_OPEN_EVENT, open);
@@ -154,8 +148,13 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     // Require at least text or image
     if ((!text && !hasImage) || loading) return;
 
-    const patronKey = getPatronAgentChatApiKey();
-    if (!patronKey) {
+    if (!authSessionId) {
+      if (sendHintTimerRef.current) clearTimeout(sendHintTimerRef.current);
+      setSendBlockedHint('Sign in to send messages.');
+      sendHintTimerRef.current = setTimeout(() => {
+        setSendBlockedHint(null);
+        sendHintTimerRef.current = null;
+      }, 5000);
       return;
     }
 
@@ -195,16 +194,16 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
       // Use streaming to show thinking process
       const imageId = hasImage
-        ? await chatApi.uploadImage(imageToSend!.file, patronKey).then((r) => r.image_id)
+        ? await chatApi.uploadImageBrowserSession(imageToSend!.file, authSessionId).then((r) => r.image_id)
         : undefined;
 
-      const stream = chatApi.chatStream(
+      const stream = chatApi.chatStreamBrowserSession(
         text || (hasImage ? 'Find items similar to this image' : ''),
         imageId,
         chatSessionId,
         authSessionId,
         shopContextForChatRequest({ gender, category, query }),
-        patronKey,
+        authSessionId,
         historyForApi,
       );
 
@@ -327,8 +326,8 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
           <div className="chat-header">
             <div className="chat-header-info">
               <span className="chat-title">Stylist</span>
-              <span className={`chat-status ${online === false ? 'offline' : 'online'}`}>
-                {online === false ? 'Offline' : 'Online'}
+              <span className={`chat-status ${connected ? 'online' : 'offline'}`}>
+                {connected ? 'Live' : 'Offline'}
               </span>
             </div>
             {!embedded && (
@@ -337,6 +336,19 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
               </button>
             )}
           </div>
+
+          <p className="chat-realtime-caption" role="status">
+            {connected
+              ? 'Live WebSocket is up for this chat session — stylist replies and product cards can update here in real time.'
+              : 'Live WebSocket disconnected — reconnecting… Real-time updates in this panel will resume when the link is back.'}
+          </p>
+
+          {!session && (
+            <div className="chat-patron-hint" role="note">
+              <Link to="/sign-in">Sign in</Link>
+              <span> to send messages. Your session sends each turn to the API; the live WebSocket on this chat session delivers stylist updates into the thread in real time.</span>
+            </div>
+          )}
 
           <div className="chat-messages">
             {messages.map((msg) => (
@@ -489,6 +501,11 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
           {/* Input row */}
           <div className="chat-input-row">
+            {sendBlockedHint && (
+              <div className="chat-send-block-hint" role="status">
+                {sendBlockedHint}
+              </div>
+            )}
             <button
               className="chat-img-btn"
               onClick={() => fileRef.current?.click()}

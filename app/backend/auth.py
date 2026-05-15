@@ -132,6 +132,14 @@ class UserResponse(BaseModel):
     name: Optional[str] = None
 
 
+class MeResponse(BaseModel):
+    """Current user plus ``session_id`` for SPA state after cookie-based auth."""
+
+    email: str
+    name: Optional[str] = None
+    session_id: str
+
+
 class LoginResponse(BaseModel):
     session_id: str
     user: UserResponse

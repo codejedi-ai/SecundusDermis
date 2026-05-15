@@ -9,7 +9,7 @@ export function userFacingChatSendError(err: unknown): string {
     return 'Could not reach the API from this page. If you use the Vite dev server, run the backend on port 8000 so `/api` is proxied.';
   }
   if (/\b401\b|\b403\b/.test(msg)) {
-    return 'Patron API key was rejected. Open AI agents → API keys and save a valid `sdag_…` key.';
+    return 'Your session was rejected or expired. Try signing in again.';
   }
   if (/\b503\b/.test(msg) || low.includes('not configured') || low.includes('agent_internal_secret')) {
     return 'No default agent selected.';

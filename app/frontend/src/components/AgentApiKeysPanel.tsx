@@ -1,46 +1,42 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Key, Trash2, Copy, CheckCircle, AlertCircle } from 'lucide-react';
+import { Key, Trash2, Copy, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
 import {
-  getPatronAgentChatApiKey,
-  setPatronAgentChatApiKey,
-} from '../lib/patron-agent-chat-key';
-import {
-  listAgentApiKeys,
-  createAgentApiKey,
+  createAgentInvite,
+  listRegisteredAgents,
   revokeAgentApiKey,
   type AgentApiKeyMeta,
+  type PendingAgentInvite,
 } from '../services/fashionApi';
 import '../styles/account.css';
 
-/**
- * Patron agent API keys + in-browser ``sdag_…`` storage (same behavior as the former Account section).
- */
-export default function AgentApiKeysPanel() {
+/** Lists onboarded agents and pending invites for this account. */
+export default function AgentApiKeysPanel({ onKeysMutated }: { onKeysMutated?: () => void }) {
   const { session } = useAuth();
   const sessionId = session?.session_id;
-  const [keys, setKeys] = useState<AgentApiKeyMeta[]>([]);
+  const [agents, setAgents] = useState<AgentApiKeyMeta[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingAgentInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [label, setLabel] = useState('');
-  const [newToken, setNewToken] = useState<string | null>(null);
-  const [inBrowserKeyDraft, setInBrowserKeyDraft] = useState('');
-  const [inBrowserKeyNotice, setInBrowserKeyNotice] = useState<string | null>(null);
+  const [inviteLabel, setInviteLabel] = useState('');
+  const [newRegistrationCode, setNewRegistrationCode] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setError('');
     setLoading(true);
     if (!sessionId) {
-      setKeys([]);
+      setAgents([]);
+      setPendingInvites([]);
       setLoading(false);
       return;
     }
     try {
-      const r = await listAgentApiKeys(sessionId);
-      setKeys(r.keys ?? []);
+      const r = await listRegisteredAgents(sessionId);
+      setAgents(r.agents ?? []);
+      setPendingInvites(r.pending_invites ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load API keys');
+      setError(e instanceof Error ? e.message : 'Could not load list.');
     } finally {
       setLoading(false);
     }
@@ -50,36 +46,34 @@ export default function AgentApiKeysPanel() {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    setInBrowserKeyDraft(getPatronAgentChatApiKey() ?? '');
-  }, []);
-
-  const handleCreate = async () => {
+  const handleCreateInvite = async () => {
     if (!sessionId) return;
     setBusy(true);
     setError('');
     try {
-      const r = await createAgentApiKey(label.trim(), sessionId);
-      setNewToken(r.token);
-      setLabel('');
+      const r = await createAgentInvite(inviteLabel.trim(), sessionId);
+      setNewRegistrationCode(r.registration_code);
+      setInviteLabel('');
       await refresh();
+      onKeysMutated?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create failed');
+      setError(e instanceof Error ? e.message : 'Could not create invite.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleRevoke = async (id: string) => {
+  const handleRevokeAgent = async (id: string) => {
     if (!sessionId) return;
-    if (!window.confirm('Revoke this key? Tools using it will stop working.')) return;
+    if (!window.confirm('Remove this agent from your account? It will lose access immediately.')) return;
     setBusy(true);
     setError('');
     try {
       await revokeAgentApiKey(id, sessionId);
       await refresh();
+      onKeysMutated?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Revoke failed');
+      setError(e instanceof Error ? e.message : 'Remove failed.');
     } finally {
       setBusy(false);
     }
@@ -88,9 +82,9 @@ export default function AgentApiKeysPanel() {
   if (!sessionId) {
     return (
       <div className="account-section">
-        <h2 className="section-title">AI agent API keys</h2>
+        <h2 className="section-title">Onboarded agents</h2>
         <div className="form-message form-message-error" style={{ marginTop: '1rem' }}>
-          <AlertCircle size={16} /> Missing session for API requests. Please sign out and sign in again.
+          <AlertCircle size={16} /> Please sign in again to view this list.
         </div>
       </div>
     );
@@ -98,123 +92,61 @@ export default function AgentApiKeysPanel() {
 
   return (
     <div className="account-section">
-      <h2 className="section-title">AI agent API keys</h2>
-      <p style={{ color: 'var(--muted, #64748b)', marginBottom: '1rem', maxWidth: '42rem' }}>
-        Managing keys here uses your signed-in browser session only. External agents and scripts never use that session: they call{' '}
-        <code style={{ fontSize: '0.85em' }}>GET /api/patron/agent/me</code> and{' '}
-        <code style={{ fontSize: '0.85em' }}>GET /api/patron/agent/context</code> with{' '}
-        <code style={{ fontSize: '0.85em' }}>Authorization: Bearer &lt;your key&gt;</code> or{' '}
-        <code style={{ fontSize: '0.85em' }}>X-Patron-Agent-Api-Key</code>. The full secret is shown only once when you generate a key.
-        The floating patron chat panel also calls <code style={{ fontSize: '0.85em' }}>POST /api/patron/agent/chat/stream</code> with the same key.
+      <h2 className="section-title">Onboarded agents</h2>
+      <p style={{ color: 'var(--muted, #64748b)', marginBottom: '1.25rem', maxWidth: '40rem' }}>
+        Everyone connected to your account shows here. Pending rows are waiting for a new system to finish setup.
       </p>
 
-      {newToken && (
-        <div className="form-message form-message-success" style={{ marginBottom: '1rem' }}>
-          <strong>New key (copy now — it will not be shown again):</strong>
-          <pre
-            style={{
-              marginTop: '0.5rem',
-              padding: '0.75rem',
-              background: '#0f172a',
-              color: '#e2e8f0',
-              borderRadius: 6,
-              overflow: 'auto',
-              fontSize: '0.8rem',
-            }}
-          >
-            {newToken}
-          </pre>
+      {newRegistrationCode && (
+        <div className="form-message form-message-success" style={{ marginBottom: '1.25rem', maxWidth: '40rem' }}>
+          <p style={{ margin: '0 0 0.75rem' }}>
+            <strong>Invite ready.</strong> Copy it into the system you are adding. It works once, then disappears from
+            this list when that system finishes onboarding.
+          </p>
+          <label className="account-chat-intro" htmlFor="agent-invite-copy-field" style={{ display: 'block', marginBottom: '0.35rem' }}>
+            Invite
+          </label>
+          <input
+            id="agent-invite-copy-field"
+            type="text"
+            readOnly
+            className="form-input"
+            value={newRegistrationCode}
+            onFocus={(e) => e.target.select()}
+            style={{ fontFamily: 'inherit', marginBottom: '0.75rem' }}
+          />
           <button
             type="button"
             className="btn btn-primary"
-            style={{ marginTop: '0.5rem' }}
             onClick={() => {
-              void navigator.clipboard.writeText(newToken);
+              void navigator.clipboard.writeText(newRegistrationCode);
             }}
           >
             <Copy size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            Copy to clipboard
+            Copy invite
           </button>
           <button
             type="button"
             className="btn btn-secondary"
-            style={{ marginLeft: '0.5rem', marginTop: '0.5rem' }}
-            onClick={() => {
-              setPatronAgentChatApiKey(newToken);
-              setInBrowserKeyDraft(newToken);
-              setInBrowserKeyNotice('Saved locally for in-browser chat.');
-            }}
+            style={{ marginLeft: '0.5rem' }}
+            onClick={() => setNewRegistrationCode(null)}
           >
-            Use for in-browser chat
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ marginLeft: '0.5rem', marginTop: '0.5rem' }}
-            onClick={() => setNewToken(null)}
-          >
-            Dismiss
+            Done
           </button>
         </div>
       )}
 
-      <div style={{ marginBottom: '1.5rem', maxWidth: '42rem' }}>
-        <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>In-browser patron chat (this device)</h3>
-        <p style={{ color: 'var(--muted, #64748b)', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
-          Paste a <code style={{ fontSize: '0.85em' }}>sdag_…</code> key to store it in this browser only (localStorage). Required to send messages from the floating patron chat panel.
-        </p>
-        <div className="form-group">
-          <label htmlFor="in-browser-patron-key-agents">Patron agent API key</label>
-          <input
-            id="in-browser-patron-key-agents"
-            type="password"
-            className="form-input"
-            autoComplete="off"
-            spellCheck={false}
-            value={inBrowserKeyDraft}
-            onChange={(e) => setInBrowserKeyDraft(e.target.value)}
-            placeholder="sdag_…"
-          />
-        </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          style={{ marginRight: '0.5rem' }}
-          onClick={() => {
-            setPatronAgentChatApiKey(inBrowserKeyDraft.trim() || null);
-            setInBrowserKeyNotice('Saved locally for in-browser chat.');
-          }}
-        >
-          Save for in-browser chat
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => {
-            setPatronAgentChatApiKey(null);
-            setInBrowserKeyDraft('');
-            setInBrowserKeyNotice('Cleared stored key.');
-          }}
-        >
-          Clear stored key
-        </button>
-        {inBrowserKeyNotice && (
-          <div className="form-message form-message-success" style={{ marginTop: '0.75rem' }}>
-            <CheckCircle size={16} /> {inBrowserKeyNotice}
-          </div>
-        )}
-      </div>
-
       <div className="account-form" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Add another agent</h3>
         <div className="form-group">
-          <label htmlFor="agent-key-label-agents">Label (optional)</label>
+          <label htmlFor="agent-invite-label-agents">Name (optional)</label>
           <input
-            id="agent-key-label-agents"
+            id="agent-invite-label-agents"
             type="text"
             className="form-input"
-            placeholder="e.g. Home assistant"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Studio Mac"
+            value={inviteLabel}
+            onChange={(e) => setInviteLabel(e.target.value)}
             maxLength={80}
           />
         </div>
@@ -222,10 +154,10 @@ export default function AgentApiKeysPanel() {
           type="button"
           className="btn btn-primary"
           disabled={busy || !sessionId}
-          onClick={() => void handleCreate()}
+          onClick={() => void handleCreateInvite()}
         >
           <Key size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          {busy ? 'Working…' : 'Generate new key'}
+          {busy ? 'Working…' : 'Create invite'}
         </button>
       </div>
 
@@ -236,33 +168,57 @@ export default function AgentApiKeysPanel() {
       )}
 
       {loading ? (
-        <p>Loading keys…</p>
-      ) : keys.length === 0 ? (
-        <p style={{ color: 'var(--muted, #64748b)' }}>No keys yet. Generate one to let an agent call the API as you.</p>
+        <p>Loading…</p>
       ) : (
-        <ul className="session-list" style={{ listStyle: 'none', padding: 0 }}>
-          {keys.map((k) => (
-            <li key={k.id} className="session-item" style={{ marginBottom: '0.5rem' }}>
-              <div className="session-info">
-                <strong>{k.label}</strong>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
-                  <code>{k.prefix}</code>
-                  {' · '}
-                  {new Date((k.created_at || 0) * 1000).toLocaleString()}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={busy}
-                onClick={() => void handleRevoke(k.id)}
-                title="Revoke key"
-              >
-                <Trash2 size={16} />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          {pendingInvites.length > 0 && (
+            <div style={{ marginBottom: '1.5rem', maxWidth: '40rem' }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Pending</h3>
+              <p style={{ color: 'var(--muted, #64748b)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+                These invites are not onboarded yet.
+              </p>
+              <ul className="session-list" style={{ listStyle: 'none', padding: 0 }}>
+                {pendingInvites.map((inv) => (
+                  <li key={inv.id} className="session-item" style={{ marginBottom: '0.5rem' }}>
+                    <strong>{inv.label}</strong>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--muted, #64748b)' }}>
+                      Added {new Date((inv.created_at || 0) * 1000).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div style={{ maxWidth: '40rem' }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Onboarded</h3>
+            {agents.length === 0 ? (
+              <p style={{ color: 'var(--muted, #64748b)' }}>No agents onboarded yet.</p>
+            ) : (
+              <ul className="session-list" style={{ listStyle: 'none', padding: 0 }}>
+                {agents.map((k) => (
+                  <li key={k.id} className="session-item" style={{ marginBottom: '0.5rem' }}>
+                    <div className="session-info">
+                      <strong>{k.label}</strong>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--muted, #64748b)' }}>
+                        Onboarded {new Date((k.created_at || 0) * 1000).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={busy}
+                      onClick={() => void handleRevokeAgent(k.id)}
+                      title="Remove agent"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

@@ -38,11 +38,11 @@ export interface CatalogStats {
   embedding_dim: number;
   /** Same label as GET /api/health ``search_mode`` (server retrieval stack). */
   search_mode?: string;
-  /** True when ``AGENT_SERVICE_URL`` is set (chat proxied to standalone agent). */
+  /** True when operator set ``AGENT_SERVICE_URL`` (API proxies patron chat to that BYOA process). */
   agent_proxy?: boolean;
-  /** Trusted Socket.IO clients in ``sd_agent_service`` (duplex agent channel). */
+  /** Trusted Socket.IO clients in ``sd_agent_service`` (duplex on your linked agent, not the browser). */
   agent_socket_online_count?: number;
-  /** Whether ``GET {AGENT_SERVICE_URL}/health`` succeeded (null when agent HTTP client not configured). */
+  /** Whether ``GET {AGENT_SERVICE_URL}/health`` succeeded (null when no agent URL configured). */
   stylist_agent_http_reachable?: boolean | null;
 }
 
@@ -308,6 +308,8 @@ export interface AgentApiKeyMeta {
   label: string;
   created_at: number;
   last_used_at: number | null;
+  /** True when a Socket.IO client is connected as ``agent`` using this key (``patron_agent_api_key`` auth). */
+  agent_socket_online?: boolean;
 }
 
 export interface AgentApiKeyCreated extends AgentApiKeyMeta {
@@ -333,6 +335,54 @@ export function revokeAgentApiKey(keyId: string, sessionId: string): Promise<{ s
   return request(`/auth/agent-api-keys/${encodeURIComponent(keyId)}`, {
     method: 'DELETE',
     headers: { 'session-id': sessionId },
+  });
+}
+
+export interface PendingAgentInvite {
+  id: string;
+  label: string;
+  prefix: string;
+  created_at: number;
+}
+
+export interface RegisteredAgentsResponse {
+  agents: AgentApiKeyMeta[];
+  pending_invites: PendingAgentInvite[];
+}
+
+export interface AgentInviteCreated {
+  registration_code: string;
+  id: string;
+  label: string;
+  prefix: string;
+  created_at: number;
+}
+
+/** List registered agents (with Socket.IO status) and pending one-time invites. */
+export function listRegisteredAgents(sessionId: string): Promise<RegisteredAgentsResponse> {
+  return request('/auth/agents', {
+    headers: { 'session-id': sessionId },
+  });
+}
+
+/** Mint a one-time ``sdreg_…`` code for ``POST /patron/agent/register``. */
+export function createAgentInvite(label: string, sessionId: string): Promise<AgentInviteCreated> {
+  return request('/auth/agent-invites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'session-id': sessionId },
+    body: JSON.stringify({ label }),
+  });
+}
+
+/** Public: exchange ``sdreg_…`` once for ``sdag_…`` (agent process calls this). */
+export function registerPatronAgent(body: {
+  registration_code: string;
+  agent_name?: string;
+}): Promise<{ agent_api_key: string; id: string; label: string; prefix: string; created_at: number }> {
+  return request('/patron/agent/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 }
 

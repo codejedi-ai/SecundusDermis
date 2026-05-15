@@ -50,7 +50,7 @@ import base64
 import httpx
 import numpy as np
 import socketio
-from fastapi import APIRouter, Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Cookie, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,7 +59,7 @@ from pydantic import BaseModel, Field
 
 import config
 from auth import (
-    UserCreate, UserLogin, UserResponse, LoginResponse, PasswordReset,
+    UserCreate, UserLogin, UserResponse, MeResponse, LoginResponse, PasswordReset,
     RegisterResponse, VerifyEmailRequest, ProfileUpdate,
     create_user, try_authenticate, get_user_from_session, logout,
     create_reset_token, verify_reset_token, reset_password,
@@ -81,6 +81,7 @@ from smtp_mail import (
 )
 
 import agent_api_keys
+import agent_invites
 from agent_socket_bridge import (
     AGENT_SERVICE_ROOM,
     DEPLOYMENT_STATS_ROOM,
@@ -390,6 +391,16 @@ else:
 # Patron-facing JSON routes live under ``PUBLIC_HTTP_API_PREFIX`` (``/api/...``) — no path stripping.
 api_router = APIRouter(prefix=config.PUBLIC_HTTP_API_PREFIX)
 
+
+def _browser_session_id(
+    session_header: Optional[str] = Header(default=None, alias="session-id"),
+    cookie_sid: Optional[str] = Cookie(default=None, alias="sd_session_id"),
+) -> Optional[str]:
+    """Patron browser auth: ``session-id`` header (SPA) or HttpOnly ``sd_session_id`` cookie (login)."""
+    h = (session_header or "").strip()
+    c = (cookie_sid or "").strip()
+    return h or c or None
+
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
@@ -636,6 +647,23 @@ class AgentApiKeyCreate(BaseModel):
     """Human-friendly label for an autonomous agent or tool using this key."""
 
     label: str = ""
+
+
+class PatronAgentRegisterBody(BaseModel):
+    """One-time ``sdreg_…`` code; agent picks a display name when binding."""
+
+    registration_code: str = Field(..., min_length=1, max_length=512)
+    agent_name: str = Field("", max_length=120)
+
+
+class PatronAgentRegisterResponse(BaseModel):
+    """Returned once when registration succeeds — store ``agent_api_key`` securely."""
+
+    agent_api_key: str
+    id: str
+    label: str
+    prefix: str
+    created_at: float
 
 
 class PatronAgentContextEntry(BaseModel):
@@ -905,25 +933,27 @@ async def login(user: UserLogin):
     return response
 
 @api_router.post("/auth/logout")
-async def logout_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def logout_endpoint(session_id: Optional[str] = Depends(_browser_session_id)):
     if session_id: logout(session_id)
     response = JSONResponse(content={"status": "logged out"})
     response.delete_cookie(key="sd_session_id", path="/")
     return response
 
 
-@api_router.get("/auth/me")
-async def get_current_user(session_id: Optional[str] = Header(default=None, alias="session-id")):
-    if not session_id: raise HTTPException(status_code=401, detail="No session")
+@api_router.get("/auth/me", response_model=MeResponse)
+async def get_current_user(session_id: Optional[str] = Depends(_browser_session_id)):
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
-    if not user: raise HTTPException(status_code=401, detail="Invalid session")
-    return user
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return MeResponse(email=user.email, name=user.name, session_id=session_id)
 
 
 @api_router.put("/auth/me")
 async def update_profile(
     profile: "ProfileUpdate",
-    session_id: Optional[str] = Header(default=None, alias="session-id"),
+    session_id: Optional[str] = Depends(_browser_session_id),
 ):
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
@@ -1003,7 +1033,7 @@ async def reset_password_endpoint(reset_data: PasswordReset):
 @api_router.post("/auth/agent-api-keys")
 async def auth_create_agent_api_key(
     body: AgentApiKeyCreate,
-    session_id: Optional[str] = Header(default=None, alias="session-id"),
+    session_id: Optional[str] = Depends(_browser_session_id),
 ):
     """Create a per-patron API key (plaintext returned once). Use with ``/patron/agent/*``."""
     if not session_id:
@@ -1016,19 +1046,20 @@ async def auth_create_agent_api_key(
 
 
 @api_router.get("/auth/agent-api-keys")
-async def auth_list_agent_api_keys(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def auth_list_agent_api_keys(session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid session")
-    return {"keys": agent_api_keys.list_keys(user.email)}
+    keys = agent_api_keys.list_keys(user.email)
+    return {"keys": keys}
 
 
 @api_router.delete("/auth/agent-api-keys/{key_id}")
 async def auth_revoke_agent_api_key(
     key_id: str,
-    session_id: Optional[str] = Header(default=None, alias="session-id"),
+    session_id: Optional[str] = Depends(_browser_session_id),
 ):
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
@@ -1040,24 +1071,53 @@ async def auth_revoke_agent_api_key(
     return {"status": "revoked", "id": key_id}
 
 
+@api_router.get("/auth/agents")
+async def auth_list_registered_agents(session_id: Optional[str] = Depends(_browser_session_id)):
+    """Registered agents (patron keys) plus pending one-time registration invites."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    keys = agent_api_keys.list_keys(user.email)
+    agents = agent_api_keys.append_agent_socket_online_flags(keys)
+    pending = agent_invites.list_pending_invites_public(user.email)
+    return {"agents": agents, "pending_invites": pending}
+
+
+@api_router.post("/auth/agent-invites")
+async def auth_create_agent_invite(
+    body: AgentApiKeyCreate,
+    session_id: Optional[str] = Depends(_browser_session_id),
+):
+    """Mint a one-time ``sdreg_…`` code for ``POST /patron/agent/register`` (plaintext returned once)."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session")
+    user = get_user_from_session(session_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    raw, meta = agent_invites.create_invite(user.email, body.label)
+    return {"registration_code": raw, **meta}
+
+
 @api_router.get("/cart", response_model=CartResponse)
-async def get_user_cart(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def get_user_cart(session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: return CartResponse(items=[], total=0.0)
     return get_cart(session_id)
 
 @api_router.post("/cart", response_model=CartResponse)
-async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def add_item_to_cart(product_id: str, product_name: str, price: float, image_url: str, quantity: int = 1, session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return add_to_cart(session_id, product_id, product_name, price, image_url, quantity)
 
 @api_router.delete("/cart/{product_id}", response_model=CartResponse)
-async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def remove_cart_item_endpoint(product_id: str, session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     return remove_from_cart(session_id, product_id)
 
 
 @api_router.get("/patron/shop-selection")
-async def patron_get_shop_selection(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def patron_get_shop_selection(session_id: Optional[str] = Depends(_browser_session_id)):
     """Return saved shop filters for this patron session, or ``{}`` if none / unauthenticated."""
     if not session_id or not get_user_from_session(session_id):
         return {}
@@ -1067,7 +1127,7 @@ async def patron_get_shop_selection(session_id: Optional[str] = Header(default=N
 @api_router.put("/patron/shop-selection")
 async def patron_put_shop_selection(
     body: PatronShopSelectionUpdate,
-    session_id: Optional[str] = Header(default=None, alias="session-id"),
+    session_id: Optional[str] = Depends(_browser_session_id),
 ):
     """Persist shop selection (gender, category, search, sidebar width) for cross-page + return visits."""
     if not session_id or not get_user_from_session(session_id):
@@ -1079,7 +1139,7 @@ async def patron_put_shop_selection(
 @api_router.post("/patron/activity")
 async def patron_post_activity(
     body: PatronActivityRecord,
-    session_id: Optional[str] = Header(default=None, alias="session-id"),
+    session_id: Optional[str] = Depends(_browser_session_id),
 ):
     """Append one activity row for the authenticated patron (best-effort analytics for the stylist)."""
     if not session_id:
@@ -1089,6 +1149,25 @@ async def patron_post_activity(
         raise HTTPException(status_code=401, detail="Invalid session")
     profile_record_activity(user.email, body.event, body.path, body.label, body.seconds)
     return {"ok": True}
+
+
+@api_router.post("/patron/agent/register", response_model=PatronAgentRegisterResponse)
+async def patron_agent_register(body: PatronAgentRegisterBody):
+    """
+    One-time registration: an agent exchanges ``sdreg_…`` (minted under ``POST /auth/agent-invites``)
+    for a long-lived ``sdag_…`` credential. The plaintext ``sdag`` is returned **only** in this response.
+    """
+    out = agent_invites.try_consume_invite(body.registration_code, body.agent_name)
+    if out is None:
+        raise HTTPException(status_code=400, detail="Invalid or already-used registration code.")
+    raw_sdag, meta = out
+    return PatronAgentRegisterResponse(
+        agent_api_key=raw_sdag,
+        id=str(meta["id"]),
+        label=str(meta.get("label") or "Agent"),
+        prefix=str(meta.get("prefix") or ""),
+        created_at=float(meta.get("created_at") or 0),
+    )
 
 
 @api_router.get("/patron/agent/me")
@@ -1123,13 +1202,8 @@ async def patron_agent_context_append(
     return {"ok": True, "stored_total": n}
 
 
-@api_router.post("/patron/agent/image/upload", response_model=ImageUploadResponse)
-async def patron_agent_upload_image(
-    file: UploadFile = File(...),
-    patron_email: str = Depends(require_patron_agent_api_key),
-):
-    """Upload image for patron chat (same storage as legacy ``/api/image/upload``); requires ``sdag_``."""
-    del patron_email
+async def _store_chat_upload_image(file: UploadFile) -> ImageUploadResponse:
+    """Save a chat image to ``UPLOADS_DIR`` (shared by API-key and browser-session upload routes)."""
     if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=400, detail="File must be JPEG, PNG, or WebP")
 
@@ -1144,8 +1218,29 @@ async def patron_agent_upload_image(
     file_path = config.UPLOADS_DIR / f"{image_id}.{ext}"
     file_path.write_bytes(content)
 
-    logger.info(f"[patron] uploaded image: {image_id} -> {file_path}")
+    logger.info(f"[chat] uploaded image: {image_id} -> {file_path}")
     return ImageUploadResponse(image_id=image_id, message="Image uploaded successfully")
+
+
+@api_router.post("/patron/agent/image/upload", response_model=ImageUploadResponse)
+async def patron_agent_upload_image(
+    file: UploadFile = File(...),
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """Upload image for patron chat (same storage as legacy ``/api/image/upload``); requires ``sdag_``."""
+    del patron_email
+    return await _store_chat_upload_image(file)
+
+
+@api_router.post("/browser/agent/image/upload", response_model=ImageUploadResponse)
+async def browser_agent_image_upload(
+    file: UploadFile = File(...),
+    browser_sid: Optional[str] = Depends(_browser_session_id),
+):
+    """Same image storage as ``/patron/agent/image/upload``; requires a signed-in browser session."""
+    if not browser_sid or not get_user_from_session(browser_sid):
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    return await _store_chat_upload_image(file)
 
 
 @api_router.post("/patron/agent/chat", response_model=ChatResponse)
@@ -1194,13 +1289,8 @@ async def patron_agent_chat(
     )
 
 
-@api_router.post("/patron/agent/chat/stream")
-async def patron_agent_chat_stream(
-    request: ChatRequest,
-    patron_email: str = Depends(require_patron_agent_api_key),
-):
-    """SSE patron chat; JSON body matches the former ``/api/chat/stream`` contract; authenticate with ``sdag_``."""
-    del patron_email
+def _agent_service_chat_stream_response(request: ChatRequest) -> StreamingResponse:
+    """Proxy ``ChatRequest`` to the configured standalone agent ``POST /v1/chat/stream`` (SSE)."""
     if state.agent_http is None:
         raise HTTPException(
             status_code=503,
@@ -1252,6 +1342,27 @@ async def patron_agent_chat_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@api_router.post("/patron/agent/chat/stream")
+async def patron_agent_chat_stream(
+    request: ChatRequest,
+    patron_email: str = Depends(require_patron_agent_api_key),
+):
+    """SSE patron chat; JSON body matches the former ``/api/chat/stream`` contract; authenticate with ``sdag_``."""
+    del patron_email
+    return _agent_service_chat_stream_response(request)
+
+
+@api_router.post("/browser/agent/chat/stream")
+async def browser_agent_chat_stream(
+    request: ChatRequest,
+    browser_sid: Optional[str] = Depends(_browser_session_id),
+):
+    """SSE stylist chat for the signed-in SPA (session cookie or ``session-id``); same body as patron stream."""
+    if not browser_sid or not get_user_from_session(browser_sid):
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    return _agent_service_chat_stream_response(request)
 
 
 async def _deployment_catalog_stats_dict() -> dict[str, Any]:
@@ -1347,12 +1458,12 @@ def _load_journal() -> list[dict]:
 # ── Conversations (Session Sync) ──────────────────────────────────────────────
 
 @api_router.get("/conversations")
-async def get_conversations(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def get_conversations(session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: return {"messages": []}
     return {"messages": get_messages(session_id)}
 
 @api_router.post("/conversations")
-async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def add_message(msg: ConvoMessage, session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     messages = append_message(session_id, msg.role, msg.content, msg.timestamp)
     
@@ -1366,7 +1477,7 @@ async def add_message(msg: ConvoMessage, session_id: Optional[str] = Header(defa
     return {"messages": messages}
 
 @api_router.delete("/conversations")
-async def clear_conversation_endpoint(session_id: Optional[str] = Header(default=None, alias="session-id")):
+async def clear_conversation_endpoint(session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id: raise HTTPException(status_code=401, detail="No session")
     clear_convo(session_id)
     return {"status": "cleared"}

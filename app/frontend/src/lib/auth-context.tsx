@@ -1,6 +1,7 @@
 /**
  * Auth context using backend API.
- * Session is stored in cookies for persistence across browser sessions.
+ * Session id is issued on login as an HttpOnly ``sd_session_id`` cookie; the SPA restores
+ * ``session`` state via ``GET /api/auth/me`` (credentials) which returns ``session_id`` in JSON.
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { parseApiErrorDetail } from './api-error';
@@ -38,11 +39,6 @@ interface AuthContextType {
 // ── Cookie helpers ────────────────────────────────────────────────────────
 
 const SESSION_COOKIE = 'sd_session_id';
-
-function setCookie(name: string, value: string, days: number) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
-}
 
 function getCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -103,29 +99,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const sessionId = getCookie(SESSION_COOKIE);
-    if (sessionId) {
-      fetch(`${API_BASE}/auth/me`, {
-        headers: { 'session-id': sessionId },
-        credentials: 'include',
+    fetch(`${API_BASE}/auth/me`, {
+      credentials: 'include',
+    })
+      .then((r) => {
+        if (!r.ok) {
+          deleteCookie(SESSION_COOKIE)
+          return null
+        }
+        return r.json() as Promise<{ email: string; name?: string | null; session_id: string }>
       })
-        .then(r => {
-          if (!r.ok) { deleteCookie(SESSION_COOKIE); return null; }
-          return r.json();
-        })
-        .then(u => {
-          if (u) {
-            const s: Session = { session_id: sessionId, user: u };
-            setSession(s);
-            setUser(u);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
-  }, []);
+      .then((data) => {
+        if (data?.session_id && data.email) {
+          const u: User = { email: data.email, name: data.name || '' }
+          setSession({ session_id: data.session_id, user: u })
+          setUser(u)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false))
+  }, [])
 
   // Listen for profile updates from Account page
   useEffect(() => {
@@ -187,8 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(parseApiErrorDetail(body, raw, fallback));
     }
     const data = body as unknown as Session;
-    // Store session in both cookie and state for persistence
-    setCookie(SESSION_COOKIE, data.session_id, 30); // 30 days
+    // Server sets HttpOnly ``sd_session_id``; avoid duplicating a JS-readable cookie.
     setSession(data);
     setUser(data.user);
 
@@ -197,18 +189,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const sessionId = getCookie(SESSION_COOKIE);
-    if (sessionId) {
-      await fetch(`${API_BASE}/auth/logout`, {
-        method: 'POST',
-        headers: { 'session-id': sessionId },
-        credentials: 'include',
-      }).catch(() => {});
-    }
-    deleteCookie(SESSION_COOKIE);
-    setSession(null);
-    setUser(null);
-  };
+    const sessionId = session?.session_id ?? getCookie(SESSION_COOKIE)
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: sessionId ? { 'session-id': sessionId } : {},
+      credentials: 'include',
+    }).catch(() => {})
+    deleteCookie(SESSION_COOKIE)
+    setSession(null)
+    setUser(null)
+  }
 
   return (
     <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signOut }}>
