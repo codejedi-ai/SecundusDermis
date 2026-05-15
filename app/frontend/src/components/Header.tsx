@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Menu, Search, X, ShoppingCart, User } from 'lucide-react'
 import { useShop } from '../lib/shop-context'
 import { useAuth } from '../lib/auth-context'
+import { isAtelierExperience } from '../lib/experience-mode'
 import { useCart } from '../lib/cart-context'
 
 const Header = () => {
@@ -67,7 +68,9 @@ const Header = () => {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/about" className="nav-link">About</Link>
             <Link to="/shop" className="nav-link">Shop</Link>
-            {user && <Link to="/agents" className="nav-link">AI agents</Link>}
+            {user && isAtelierExperience(user) && (
+              <Link to="/agents" className="nav-link">AI agents</Link>
+            )}
           </nav>
         </div>
 
@@ -156,7 +159,7 @@ const Header = () => {
             ['/', 'Home'],
             ['/about', 'About'],
             ['/shop', 'Shop'],
-            ...(user ? [['/agents', 'AI agents']] as [string, string][] : []),
+            ...(user && isAtelierExperience(user) ? [['/agents', 'AI agents']] as [string, string][] : []),
             ['/faq', 'FAQ'],
             ['/contact', 'Contact'],
             ['/cart', 'Cart'],

@@ -16,6 +16,12 @@ import {
 } from '../lib/stylistSocketDedupe';
 import { userFacingChatSendError } from '../lib/chat-copy';
 
+/**
+ * Floating **Stylist** panel — generic signed-in browser session (``/api/browser/agent/*``).
+ *
+ * **Boutique and Atelier:** the launcher is always mounted from ``AppChatWidget`` in ``main.tsx`` for both
+ * modes (About page omits it only). Do **not** hide this UI based on ``experience_mode``.
+ */
 const FALLBACK_IMAGE = '/img/placeholder.svg';
 
 interface PendingImage {
@@ -548,7 +554,9 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
       {!embedded && (
         <button
+          type="button"
           className="chat-toggle"
+          data-testid="stylist-chat-toggle"
           onClick={() => setOpen((prev) => !prev)}
           aria-label={open ? 'Close chat' : 'Open AI fashion assistant'}
         >

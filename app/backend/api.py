@@ -401,6 +401,31 @@ def _browser_session_id(
     c = (cookie_sid or "").strip()
     return h or c or None
 
+
+def _attach_session_cookie(response: JSONResponse, session_id: str) -> None:
+    """
+    HttpOnly session cookie. SameSite/Secure can be tuned for split-origin deployments
+    (``SESSION_COOKIE_SAMESITE``, ``SESSION_COOKIE_SECURE`` in the backend env).
+    """
+    raw = os.getenv("SESSION_COOKIE_SAMESITE", "lax").strip().lower()
+    if raw not in ("lax", "strict", "none"):
+        raw = "lax"
+    secure = os.getenv("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes")
+    if raw == "none":
+        secure = True
+    kwargs: dict[str, Any] = {
+        "key": "sd_session_id",
+        "value": session_id,
+        "max_age": 30 * 24 * 60 * 60,
+        "httponly": True,
+        "samesite": raw,
+        "path": "/",
+    }
+    if secure:
+        kwargs["secure"] = True
+    response.set_cookie(**kwargs)
+
+
 # Mount static files unconditionally
 app.mount("/images", StaticFiles(directory=str(config.IMAGES_DIR)), name="product_images")
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
@@ -928,8 +953,17 @@ async def login(user: UserLogin):
             detail="Sign in failed. Check your email and password.",
         )
     user_resp = get_user_from_session(session_id)
-    response = JSONResponse(content={"session_id": session_id, "user": {"email": user_resp.email, "name": user_resp.name}})
-    response.set_cookie(key="sd_session_id", value=session_id, max_age=30*24*60*60, httponly=True, samesite="lax", path="/")
+    response = JSONResponse(
+        content={
+            "session_id": session_id,
+            "user": {
+                "email": user_resp.email,
+                "name": user_resp.name,
+                "experience_mode": user_resp.experience_mode,
+            },
+        }
+    )
+    _attach_session_cookie(response, session_id)
     return response
 
 @api_router.post("/auth/logout")
@@ -940,14 +974,24 @@ async def logout_endpoint(session_id: Optional[str] = Depends(_browser_session_i
     return response
 
 
-@api_router.get("/auth/me", response_model=MeResponse)
+@api_router.get("/auth/me", response_model=None)
 async def get_current_user(session_id: Optional[str] = Depends(_browser_session_id)):
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid session")
-    return MeResponse(email=user.email, name=user.name, session_id=session_id)
+    payload = MeResponse(
+        email=user.email,
+        name=user.name,
+        session_id=session_id,
+        experience_mode=user.experience_mode,
+    ).model_dump()
+    response = JSONResponse(content=payload)
+    # Re-issue the cookie on every successful read so reload/bootstrap reliably persist
+    # (SPA may authenticate via ``session-id`` header backup when the cookie is missing).
+    _attach_session_cookie(response, session_id)
+    return response
 
 
 @api_router.put("/auth/me")
@@ -960,7 +1004,11 @@ async def update_profile(
     current = get_user_from_session(session_id)
     if not current:
         raise HTTPException(status_code=401, detail="Invalid session")
-    updated = update_user_profile(email=current.email, name=profile.name)
+    updated = update_user_profile(
+        email=current.email,
+        name=profile.name,
+        experience_mode=profile.experience_mode,
+    )
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
     return updated

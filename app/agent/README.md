@@ -1,6 +1,35 @@
 # Secundus stylist agent (standalone process)
 
-This package runs the **Gemini ReAct stylist loop** outside the FastAPI backend. It talks to the API over **HTTP** (`/internal/agent/*`) for catalog search, sidebar state, and RAG context. Patron-room fan-out uses **`POST /internal/agent/emit`** by default, or a **Socket.IO** connection when **`SD_SOCKETIO_EMIT=1`** (same auth as the browser agent path: `agent_secret` on connect, then `agent_emit` events — see repo root **`AGENT_MANIFEST.md`** and backend **`GET /api/agent-manifest.md`**).
+This package runs the **Gemini ReAct stylist loop** outside the FastAPI backend. It talks to the API over **HTTP** (`/internal/agent/*`) for catalog search, sidebar state, and RAG context. Patron-room fan-out uses **`POST /internal/agent/emit`** by default, or a **Socket.IO** connection when **`SD_SOCKETIO_EMIT=1`** (then `agent_emit` events — see repo root **`AGENT_MANIFEST.md`** and backend **`GET /api/agent-manifest.md`**).
+
+## Authentication (agent ↔ backend)
+
+The **trusted stylist process** is not a signed-in human. It authenticates to FastAPI as a **peer service** using one **shared symmetric secret**:
+
+- **Env:** `AGENT_INTERNAL_SECRET` (same string on the API host and the agent host).
+- **File fallback:** if unset, both sides read **`{DATA_DIR}/.sd_agent_internal_secret`** (see `app/backend/agent_secret_file.py` and `secundus_agent/backend_config.py`).
+
+### HTTP
+
+| Direction | Header | Purpose |
+|-----------|--------|---------|
+| **Agent → API** | `X-Agent-Secret: <secret>` | Required on every **`POST /internal/agent/*`** call. The API enforces this in `verify_agent_secret` in `app/backend/api.py`. Implemented in this package via `secundus_agent/remote_deps.py`, `sync_chat.py`, etc. |
+| **API → Agent** | `X-Agent-Secret: <secret>` | When the backend proxies patron or browser chat, its httpx client calls **`POST /v1/chat/stream`** on this service with the same header so only your API can trigger inference. |
+
+### Socket.IO (optional)
+
+When **`SD_SOCKETIO_EMIT`** or **`SD_AGENT_SOCKET`** is truthy, `secundus_agent/sd_socket_client.py` connects to the **backend’s** Socket.IO server (`BACKEND_URL`, path `/socket.io`) with:
+
+```text
+auth: { "agent_secret": "<AGENT_INTERNAL_SECRET>" }
+```
+
+The backend `connect` handler compares `auth.agent_secret` to `AGENT_INTERNAL_SECRET`, marks the connection as role **`agent`**, and can receive `agent_emit` / `sd_bridge` traffic. This is **not** the browser’s Socket.IO session (the SPA does not send this secret).
+
+### What this is *not*
+
+- **Browsers** use **session auth** (`sd_session_id` / `session-id`) for **`/api/browser/agent/*`**, not `AGENT_INTERNAL_SECRET`.
+- **External onboarded automation** uses per-account **`sdag_…`** patron API keys on **`/api/patron/agent/*`** and may use **`patron_agent_api_key`** in Socket.IO `auth` — see `app/backend/agent_api_keys.py` and the Agents hub (“Onboarded agents”).
 
 ## Why separate?
 
@@ -53,7 +82,7 @@ export GEMINI_API_KEY='...'
 
 ## WebSocket (optional)
 
-The backend accepts Socket.IO connections with `auth: { agent_secret: AGENT_INTERNAL_SECRET }` and handles `agent_emit` with `{ session_id, event, data }` to push into `sd_{session_id}`. The default remote agent uses **HTTP** `/internal/agent/emit` only; you can extend `secundus_agent/remote_deps.py` to use a client socket instead.
+The backend accepts Socket.IO connections from **this** process using `auth: { agent_secret: AGENT_INTERNAL_SECRET }` (see **Authentication (agent ↔ backend)** above) and handles `agent_emit` with `{ session_id, event, data }` to push into `sd_{session_id}`. The default remote agent uses **HTTP** `/internal/agent/emit` only; you can extend `secundus_agent/remote_deps.py` to use a client socket instead.
 
 ## Persona (`soul.md`)
 

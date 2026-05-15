@@ -618,6 +618,73 @@
   word-break: break-word;
 }
 
+/* ── Experience (Boutique vs Atelier) ───────────────────────────────────── */
+
+.account-experience-lead {
+  max-width: 42rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--color-gray-600, #64748b);
+  margin-bottom: 1.5rem;
+}
+
+.experience-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  max-width: 52rem;
+}
+
+.experience-card {
+  text-align: left;
+  padding: 1.25rem 1.35rem;
+  border-radius: var(--radius-lg, 12px);
+  border: 2px solid var(--color-gray-200, #e2e8f0);
+  background: var(--color-white, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  font: inherit;
+}
+
+.experience-card:hover:not(:disabled) {
+  border-color: var(--color-gray-400, #94a3b8);
+}
+
+.experience-card:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.experience-card--active {
+  border-color: var(--color-primary, #0f172a);
+  box-shadow: 0 0 0 1px var(--color-primary, #0f172a);
+}
+
+.experience-card-label {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  color: var(--color-text, #0f172a);
+}
+
+.experience-card-desc {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-gray-600, #64748b);
+}
+
+.account-experience-note {
+  max-width: 42rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-gray-500, #64748b);
+  margin-bottom: 1.25rem;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {

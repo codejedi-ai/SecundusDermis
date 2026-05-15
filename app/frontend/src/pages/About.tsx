@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { useAuth } from '../lib/auth-context'
+import { isAtelierExperience } from '../lib/experience-mode'
 
 const About = () => {
   const { user } = useAuth()
@@ -75,7 +76,7 @@ const About = () => {
               <Link to="/shop" className="craft-link">
                 Browse the catalog <ArrowRight size={16} />
               </Link>
-              {user && (
+              {user && isAtelierExperience(user) && (
                 <Link to="/agents" className="craft-link craft-link-secondary">
                   AI agents hub <ArrowRight size={16} />
                 </Link>

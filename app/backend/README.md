@@ -82,6 +82,12 @@ Visit `http://localhost:8000/docs` for Swagger UI with all endpoints.
 └──────────────────────────────────────────────────────────┘
 ```
 
+### Standalone stylist agent (authentication)
+
+When **`AGENT_SERVICE_URL`** is set, patron and browser chat streams are **proxied** to a separate agent process. That process calls **`POST /internal/agent/*`** on this API only if the caller sends **`X-Agent-Secret`** matching **`AGENT_INTERNAL_SECRET`** (or the shared **`.sd_agent_internal_secret`** file under `DATA_DIR`). Optional duplex Socket.IO from the agent uses **`auth.agent_secret`** on connect, not browser cookies.
+
+Full matrix (HTTP both directions, Socket.IO, vs patron API keys): **`../agent/README.md`** → section **Authentication (agent ↔ backend)**.
+
 ### Key Modules
 
 | File | Purpose |

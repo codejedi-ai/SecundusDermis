@@ -30,6 +30,7 @@ import ShopSidebar from './components/ShopSidebar'
 import AccountSidebar, { ACCOUNT_SECTION_IDS } from './components/AccountSidebar'
 import ResizableSidebar from './components/ResizableSidebar'
 import ProtectedRoute from './components/ProtectedRoute'
+import AtelierRoute from './components/AtelierRoute'
 import ScrollToTop from './components/ScrollToTop'
 import Product from './pages/Product'
 import Shop from './pages/Shop'
@@ -147,7 +148,10 @@ function ShopSocketSync() {
   return null;
 }
 
-/** Floating chat is hidden on About — that page can embed the widget inline if needed. */
+/**
+ * Floating stylist chat — **Boutique and Atelier** (only omitted on ``/about``).
+ * Uses the generic signed-in browser session. Do **not** gate on ``isAtelierExperience``.
+ */
 function AppChatWidget() {
   const { pathname } = useLocation()
   if (pathname === '/about') return null
@@ -268,7 +272,16 @@ function App() {
 
                 <Route path="/faq" element={<FAQ />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route path="/agents" element={<ProtectedRoute><Agents /></ProtectedRoute>} />
+                <Route
+                  path="/agents"
+                  element={
+                    <ProtectedRoute>
+                      <AtelierRoute>
+                        <Agents />
+                      </AtelierRoute>
+                    </ProtectedRoute>
+                  }
+                />
               </Routes>
             </main>
             <AppChatWidget />

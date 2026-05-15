@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Camera, Users, Play } from 'lucide-react'
 import { useAuth } from '../lib/auth-context'
+import { isAtelierExperience } from '../lib/experience-mode'
 
 const Footer = () => {
   const { user } = useAuth()
@@ -29,7 +30,7 @@ const Footer = () => {
             <h4 className="footer-heading">About</h4>
             <ul className="footer-list">
               <li><Link to="/about" className="footer-link">AI Agent Playground</Link></li>
-              {user && (
+              {user && isAtelierExperience(user) && (
                 <li><Link to="/agents" className="footer-link">AI agents</Link></li>
               )}
             </ul>
@@ -38,7 +39,9 @@ const Footer = () => {
           <div className="footer-col footer-col-brand">
             <Link to="/" className="footer-logo">Secundus Dermis</Link>
             <p className="footer-tagline">
-              AI-powered fashion discovery — 12,000+ pieces.
+              {!user || !isAtelierExperience(user)
+                ? 'Curated luxury fashion — browse the catalog and discover your second skin.'
+                : 'AI-powered fashion discovery — 12,000+ pieces.'}
             </p>
             <div className="footer-social">
               <a href="#" className="footer-social-link" aria-label="Instagram">

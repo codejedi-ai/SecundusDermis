@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 import { Package, Heart, Settings, MapPin, CreditCard, CheckCircle, AlertCircle } from 'lucide-react';
 import { API_BASE } from '../lib/api-base';
+import type { ExperienceMode } from '../lib/experience-mode';
 import '../styles/account.css';
 
 interface AccountContext {
@@ -116,6 +117,105 @@ function ProfileSection({ user }: { user: { name: string | null; email: string }
   );
 }
 
+/** **Boutique vs Atelier** — two experience modes; choice is persisted on the account. */
+function ExperienceSection() {
+  const { user, session } = useAuth();
+  const navigate = useNavigate();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const current = user?.experience_mode ?? 'boutique';
+
+  const apply = async (mode: ExperienceMode) => {
+    if (!session?.session_id || mode === current) return;
+    setError('');
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'session-id': session.session_id,
+        },
+        body: JSON.stringify({ experience_mode: mode }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail || 'Could not update preference');
+      }
+      const updated = await res.json();
+      window.dispatchEvent(new CustomEvent('sd:user:updated', { detail: updated }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      if (mode === 'atelier') {
+        navigate('/agents');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="account-section">
+      <h2 className="section-title">Boutique vs Atelier</h2>
+      <p className="account-experience-lead">
+        <strong>Boutique</strong> keeps the showroom calm: no AI agents menu or deployment hub. The corner
+        stylist chat still appears when you&apos;re signed in — it always uses the same <strong>generic house</strong>{' '}
+        assistant for every account (not custom onboarded agents). <strong>Atelier</strong> adds the agents hub,
+        stylist session controls, and live shop sync with the full tool surface.
+      </p>
+      <p className="account-experience-note">
+        Your mode is <strong>persistent account data</strong>: it is saved on the server with your sign-in, so it
+        survives refresh, new browsers, and signing back in — not only in this tab&apos;s memory.
+      </p>
+
+      <div className="experience-cards">
+        <button
+          type="button"
+          className={`experience-card${current === 'boutique' ? ' experience-card--active' : ''}`}
+          onClick={() => void apply('boutique')}
+          disabled={saving}
+        >
+          <span className="experience-card-label">Boutique</span>
+          <span className="experience-card-desc">
+            No agents hub in the nav. Corner stylist chat stays when you&apos;re signed in — the same generic house
+            assistant for everyone.
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`experience-card${current === 'atelier' ? ' experience-card--active' : ''}`}
+          onClick={() => void apply('atelier')}
+          disabled={saving}
+        >
+          <span className="experience-card-label">Atelier</span>
+          <span className="experience-card-desc">
+            Agents hub, stylist session controls, onboarded agents, Socket.IO shop sync, and deployment tools — on
+            top of the same corner house stylist.
+          </span>
+        </button>
+      </div>
+
+      {saving && <p className="form-message">Saving…</p>}
+      {saved && (
+        <div className="form-message form-message-success">
+          <CheckCircle size={16} /> Preference saved.
+        </div>
+      )}
+      {error && (
+        <div className="form-message form-message-error">
+          <AlertCircle size={16} /> {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const Account = () => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
@@ -153,6 +253,9 @@ const Account = () => {
     switch (activeSection) {
       case 'profile':
         return <ProfileSection user={user} />;
+
+      case 'experience':
+        return <ExperienceSection />;
 
       case 'orders':
         return (

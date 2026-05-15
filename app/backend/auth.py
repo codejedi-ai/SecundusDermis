@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import config
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from user_experience import get_experience_mode, set_experience_mode
 
 
 class UsersStorageFullError(Exception):
@@ -130,6 +132,11 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     email: str
     name: Optional[str] = None
+    experience_mode: str = Field(
+        default="boutique",
+        pattern="^(boutique|atelier)$",
+        description="Persistent Boutique vs Atelier preference (server-side store, keyed by email).",
+    )
 
 
 class MeResponse(BaseModel):
@@ -138,6 +145,11 @@ class MeResponse(BaseModel):
     email: str
     name: Optional[str] = None
     session_id: str
+    experience_mode: str = Field(
+        default="boutique",
+        pattern="^(boutique|atelier)$",
+        description="Same persistent mode as UserResponse.",
+    )
 
 
 class LoginResponse(BaseModel):
@@ -153,6 +165,10 @@ class PasswordReset(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
+    experience_mode: Optional[str] = Field(
+        default=None,
+        description="Persistent preference: boutique | atelier (updates server-side store).",
+    )
 
 
 class VerifyEmailRequest(BaseModel):
@@ -337,12 +353,20 @@ def get_user_from_session(session_id: str) -> Optional[UserResponse]:
         user = nu.get_user_record(email)
         if not user:
             return None
-        return UserResponse(email=email, name=user.get("name") or email.split("@")[0])
+        return UserResponse(
+            email=email,
+            name=user.get("name") or email.split("@")[0],
+            experience_mode=get_experience_mode(email),
+        )
     users = _users()
     user = users.get(email)
     if not user:
         return None
-    return UserResponse(email=email, name=user["name"])
+    return UserResponse(
+        email=email,
+        name=user["name"],
+        experience_mode=get_experience_mode(email),
+    )
 
 
 def logout(session_id: str) -> bool:
@@ -364,12 +388,20 @@ def get_user_by_email(email: str) -> Optional[UserResponse]:
         user = nu.get_user_record(email)
         if not user:
             return None
-        return UserResponse(email=email, name=user.get("name") or email.split("@")[0])
+        return UserResponse(
+            email=email,
+            name=user.get("name") or email.split("@")[0],
+            experience_mode=get_experience_mode(email),
+        )
     users = _users()
     user = users.get(email)
     if not user:
         return None
-    return UserResponse(email=email, name=user.get("name"))
+    return UserResponse(
+        email=email,
+        name=user.get("name"),
+        experience_mode=get_experience_mode(email),
+    )
 
 
 def create_reset_token(email: str) -> Optional[str]:
@@ -460,9 +492,13 @@ def reset_password(token: str, new_password: str) -> bool:
     return True
 
 
-def update_user_profile(email: str, name: Optional[str] = None) -> Optional[UserResponse]:
+def update_user_profile(
+    email: str,
+    name: Optional[str] = None,
+    experience_mode: Optional[str] = None,
+) -> Optional[UserResponse]:
     """
-    Update user profile fields (currently just name).
+    Update user profile fields (name and/or UI experience mode).
     Returns updated UserResponse or None if user not found.
     """
     email = email.lower().strip()
@@ -473,9 +509,13 @@ def update_user_profile(email: str, name: Optional[str] = None) -> Optional[User
             return None
         if name is not None:
             nu.update_user_name(email, name)
+        if experience_mode is not None:
+            set_experience_mode(email, experience_mode)
         user = nu.get_user_record(email)
         return UserResponse(
-            email=email, name=(user or {}).get("name") or email.split("@")[0]
+            email=email,
+            name=(user or {}).get("name") or email.split("@")[0],
+            experience_mode=get_experience_mode(email),
         )
     users = _users()
     user = users.get(email)
@@ -484,4 +524,10 @@ def update_user_profile(email: str, name: Optional[str] = None) -> Optional[User
     if name is not None:
         users[email]["name"] = name
         _save_users(users)
-    return UserResponse(email=email, name=users[email].get("name"))
+    if experience_mode is not None:
+        set_experience_mode(email, experience_mode)
+    return UserResponse(
+        email=email,
+        name=users[email].get("name"),
+        experience_mode=get_experience_mode(email),
+    )

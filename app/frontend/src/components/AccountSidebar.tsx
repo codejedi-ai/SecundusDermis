@@ -1,4 +1,4 @@
-import { User, Package, Heart, Settings, Lock, FileText, CreditCard, MapPin, Bell, Shield, LogOut } from 'lucide-react'
+import { User, Package, Heart, Settings, Lock, FileText, CreditCard, MapPin, Bell, Shield, LogOut, Sparkles } from 'lucide-react'
 import '../styles/shop.css'
 
 const ACCOUNT_SECTIONS = [
@@ -7,6 +7,7 @@ const ACCOUNT_SECTIONS = [
     icon: User,
     items: [
       { id: 'profile', label: 'Profile Information', icon: User },
+      { id: 'experience', label: 'Boutique vs Atelier', icon: Sparkles },
       { id: 'addresses', label: 'Addresses', icon: MapPin },
     ],
   },

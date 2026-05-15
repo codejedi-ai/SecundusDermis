@@ -30,3 +30,5 @@ npm run dev            # http://localhost:5173 — proxies /api → :8000
 ```
 
 See the repository root `README.md` for full configuration and architecture.
+
+**Agent ↔ API authentication** (shared secret, `X-Agent-Secret`, optional Socket.IO): **`agent/README.md`** → *Authentication (agent ↔ backend)*.

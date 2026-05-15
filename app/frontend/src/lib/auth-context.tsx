@@ -1,17 +1,23 @@
 /**
  * Auth context using backend API.
  * Session id is issued on login as an HttpOnly ``sd_session_id`` cookie; the SPA restores
- * ``session`` state via ``GET /api/auth/me`` (credentials) which returns ``session_id`` in JSON.
+ * ``session`` state via ``GET /api/auth/me`` (credentials) which returns ``session_id`` in JSON
+ * and re-issues the cookie. A non-HttpOnly ``localStorage`` backup sends ``session-id`` on
+ * bootstrap when the cookie is missing (e.g. cross-origin API or preview builds).
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { parseApiErrorDetail } from './api-error';
 import { API_BASE } from './api-base';
+import { parseExperienceMode, type ExperienceMode } from './experience-mode';
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+export type { ExperienceMode };
 
 export interface User {
   email: string;
   name: string;
+  experience_mode: ExperienceMode;
 }
 
 export interface Session {
@@ -39,6 +45,8 @@ interface AuthContextType {
 // ── Cookie helpers ────────────────────────────────────────────────────────
 
 const SESSION_COOKIE = 'sd_session_id';
+/** Survives reload; cleared on logout or 401. Lets ``/auth/me`` restore the HttpOnly cookie. */
+const SESSION_BACKUP_KEY = 'sd_session_id_backup';
 
 function getCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -99,19 +107,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const backup = (() => {
+      try {
+        return localStorage.getItem(SESSION_BACKUP_KEY)?.trim() || ''
+      } catch {
+        return ''
+      }
+    })()
+    const headers: Record<string, string> = {}
+    if (backup) {
+      headers['session-id'] = backup
+    }
     fetch(`${API_BASE}/auth/me`, {
       credentials: 'include',
+      headers: Object.keys(headers).length ? headers : undefined,
     })
       .then((r) => {
         if (!r.ok) {
+          if (r.status === 401) {
+            try {
+              localStorage.removeItem(SESSION_BACKUP_KEY)
+            } catch {
+              /* ignore */
+            }
+          }
           deleteCookie(SESSION_COOKIE)
           return null
         }
-        return r.json() as Promise<{ email: string; name?: string | null; session_id: string }>
+        return r.json() as Promise<{
+          email: string
+          name?: string | null
+          session_id: string
+          experience_mode?: string
+        }>
       })
       .then((data) => {
         if (data?.session_id && data.email) {
-          const u: User = { email: data.email, name: data.name || '' }
+          try {
+            localStorage.setItem(SESSION_BACKUP_KEY, data.session_id)
+          } catch {
+            /* ignore */
+          }
+          const u: User = {
+            email: data.email,
+            name: data.name || '',
+            experience_mode: parseExperienceMode(data.experience_mode),
+          }
           setSession({ session_id: data.session_id, user: u })
           setUser(u)
         }
@@ -123,8 +164,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Listen for profile updates from Account page
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ email: string; name: string | null }>).detail;
-      setUser({ email: detail.email, name: detail.name || '' });
+      const detail = (e as CustomEvent<{
+        email: string
+        name?: string | null
+        experience_mode?: string
+      }>).detail;
+      setUser((prev) => {
+        if (!prev || prev.email !== detail.email) return prev;
+        return {
+          ...prev,
+          name: detail.name != null ? detail.name || '' : prev.name,
+          experience_mode:
+            detail.experience_mode === 'atelier' || detail.experience_mode === 'boutique'
+              ? detail.experience_mode
+              : prev.experience_mode,
+        };
+      });
     };
     window.addEventListener('sd:user:updated', handler);
     return () => window.removeEventListener('sd:user:updated', handler);
@@ -179,13 +234,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           : 'Sign in failed. Check your email and password.';
       throw new Error(parseApiErrorDetail(body, raw, fallback));
     }
-    const data = body as unknown as Session;
+    const data = body as {
+      session_id: string
+      user: { email: string; name?: string | null; experience_mode?: string }
+    }
+    const user: User = {
+      email: data.user.email,
+      name: data.user.name || '',
+      experience_mode: parseExperienceMode(data.user.experience_mode),
+    }
+    const session: Session = { session_id: data.session_id, user }
     // Server sets HttpOnly ``sd_session_id``; avoid duplicating a JS-readable cookie.
-    setSession(data);
-    setUser(data.user);
+    try {
+      localStorage.setItem(SESSION_BACKUP_KEY, data.session_id)
+    } catch {
+      /* ignore */
+    }
+    setSession(session);
+    setUser(user);
 
     // Sync any local messages to backend after login
-    syncLocalMessagesToBackend(data.session_id, data.user.email);
+    syncLocalMessagesToBackend(data.session_id, user.email);
   };
 
   const signOut = async () => {
@@ -195,6 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: sessionId ? { 'session-id': sessionId } : {},
       credentials: 'include',
     }).catch(() => {})
+    try {
+      localStorage.removeItem(SESSION_BACKUP_KEY)
+    } catch {
+      /* ignore */
+    }
     deleteCookie(SESSION_COOKIE)
     setSession(null)
     setUser(null)

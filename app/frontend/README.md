@@ -120,7 +120,7 @@ VITE_IMAGE_URL=https://your-api-host.example
 |-----------|-------------|
 | `Header.tsx` | Navbar with logo, navigation links, live AI-controlled search input, cart count, user menu |
 | `ShopSidebar.tsx` | Resizable filter sidebar (gender, category) — defined once in `ShopLayout`, shared across `/shop` and `/product/:id` |
-| `ChatWidget.tsx` | Floating AI chat panel (bottom-right) — text + image upload, persists across page navigation |
+| `ChatWidget.tsx` | Floating stylist chat (bottom-right) — **Boutique + Atelier**; generic signed-in browser session; hidden on About only |
 | `AgentApiKeysPanel.tsx` | Onboarded agents list and invites (`/agents?panel=agents`) |
 | `Footer.tsx` | Site footer with links |
 | `ProtectedRoute.tsx` | Auth guard wrapper for protected pages |
