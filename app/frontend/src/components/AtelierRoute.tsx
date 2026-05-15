@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth-context'
+import { AUTH_ENABLED } from '../lib/auth-config'
 import { isAtelierExperience } from '../lib/experience-mode'
 
 /**
@@ -9,6 +10,10 @@ import { isAtelierExperience } from '../lib/experience-mode'
  */
 export default function AtelierRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth()
+
+  if (!AUTH_ENABLED) {
+    return <>{children}</>
+  }
 
   if (isLoading) {
     return (

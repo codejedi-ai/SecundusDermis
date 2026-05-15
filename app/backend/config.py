@@ -97,6 +97,12 @@ def _env_bool(name: str, default: bool) -> bool:
 # browsers should set ``CORS_ENABLED=true`` (default) and tune origins below.
 CORS_ENABLED = _env_bool("CORS_ENABLED", True)
 
+# When ``False``, patron sign-in/register routes return 503; browser stylist chat works without login.
+AUTH_ENABLED = _env_bool("AUTH_ENABLED", True)
+
+# Shared house ``sdag_…`` when ``AUTH_ENABLED=false`` (boutique chat without accounts).
+GUEST_PATRON_EMAIL = os.getenv("GUEST_PATRON_EMAIL", "guest@secundus.local").strip().lower()
+
 # When CORS is on: never use ``["*"]`` with credentialed fetches (see project notes / prior bug).
 # Extra comma-separated origins (scheme+host+port), merged with FRONTEND_PUBLIC_URL.
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()

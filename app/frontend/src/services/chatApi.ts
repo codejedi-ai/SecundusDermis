@@ -172,13 +172,17 @@ export async function uploadImage(
 /** Image upload for the signed-in SPA (session cookie or ``session-id`` header). */
 export async function uploadImageBrowserSession(
   file: File,
-  browserSessionId: string,
+  browserSessionId?: string,
 ): Promise<{ image_id: string; message: string }> {
   const form = new FormData();
   form.append('file', file);
+  const headers: Record<string, string> = {};
+  if (browserSessionId?.trim()) {
+    headers['session-id'] = browserSessionId.trim();
+  }
   const r = await fetch(`${API_BASE}/browser/agent/image/upload`, {
     method: 'POST',
-    headers: { 'session-id': browserSessionId },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: form,
     credentials: 'include',
   });
@@ -230,15 +234,16 @@ export async function* chatStreamBrowserSession(
   sessionId: string,
   authSessionId: string | undefined,
   shopContext: ShopContextPayload | undefined,
-  browserSessionId: string,
+  browserSessionId: string | undefined,
   history: ChatMessage[] = [],
 ): AsyncGenerator<ChatStreamEvent> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (browserSessionId?.trim()) {
+    headers['session-id'] = browserSessionId.trim();
+  }
   const response = await fetch(`${API_BASE}/browser/agent/chat/stream`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'session-id': browserSessionId,
-    },
+    headers,
     body: JSON.stringify({
       message,
       image_id: imageId ?? null,

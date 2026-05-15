@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { parseApiErrorDetail } from './api-error';
 import { API_BASE } from './api-base';
+import { AUTH_ENABLED } from './auth-config';
 import { clearHouseAgentKeyCache, fetchHouseAgentKey } from './house-agent-key';
 import { isAtelierExperience, parseExperienceMode, type ExperienceMode } from './experience-mode';
 
@@ -108,6 +109,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!AUTH_ENABLED) {
+      setIsLoading(false);
+      return;
+    }
     const backup = (() => {
       try {
         return localStorage.getItem(SESSION_BACKUP_KEY)?.trim() || ''
@@ -190,6 +195,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, name?: string): Promise<RegisterResult> => {
+    if (!AUTH_ENABLED) {
+      throw new Error('Sign-in is temporarily disabled.');
+    }
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -217,6 +225,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (!AUTH_ENABLED) {
+      throw new Error('Sign-in is temporarily disabled.');
+    }
     const em = email.trim();
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',

@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Menu, Search, X, ShoppingCart, User } from 'lucide-react'
 import { useShop } from '../lib/shop-context'
 import { useAuth } from '../lib/auth-context'
+import { AUTH_ENABLED } from '../lib/auth-config'
 import { isAtelierExperience } from '../lib/experience-mode'
 import { useCart } from '../lib/cart-context'
 
@@ -107,35 +108,36 @@ const Header = () => {
               <ShoppingCart size={20} />
               {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </Link>
-            {user ? (
-              <Link
-                to="/account"
-                className="nav-icon-link nav-icon-link-account"
-                aria-label="Account"
-                title={user.name || user.email}
-              >
-                <User size={18} />
-                <span className="nav-icon-text nav-account-name">
-                  {user.name
-                    ? user.name.length > 14
-                      ? user.name.slice(0, 14) + '…'
-                      : user.name
-                    : user.email.length > 18
-                      ? user.email.slice(0, 18) + '…'
-                      : user.email}
-                </span>
-              </Link>
-            ) : (
-              <Link
-                to="/sign-in"
-                className="nav-icon-link"
-                aria-label="Sign In"
-                title="Sign In"
-              >
-                <User size={20} />
-                <span className="nav-icon-text">Sign In</span>
-              </Link>
-            )}
+            {AUTH_ENABLED &&
+              (user ? (
+                <Link
+                  to="/account"
+                  className="nav-icon-link nav-icon-link-account"
+                  aria-label="Account"
+                  title={user.name || user.email}
+                >
+                  <User size={18} />
+                  <span className="nav-icon-text nav-account-name">
+                    {user.name
+                      ? user.name.length > 14
+                        ? user.name.slice(0, 14) + '…'
+                        : user.name
+                      : user.email.length > 18
+                        ? user.email.slice(0, 18) + '…'
+                        : user.email}
+                  </span>
+                </Link>
+              ) : (
+                <Link
+                  to="/sign-in"
+                  className="nav-icon-link"
+                  aria-label="Sign In"
+                  title="Sign In"
+                >
+                  <User size={20} />
+                  <span className="nav-icon-text">Sign In</span>
+                </Link>
+              ))}
           </nav>
         </div>
 
@@ -163,9 +165,11 @@ const Header = () => {
             ['/faq', 'FAQ'],
             ['/contact', 'Contact'],
             ['/cart', 'Cart'],
-            ...(user
-              ? [['/account', (user.name || user.email).length > 18 ? (user.name || user.email).slice(0, 18) + '…' : (user.name || user.email)]] as [string, string][]
-              : [['/sign-in', 'Sign In']] as [string, string][]),
+            ...(AUTH_ENABLED
+              ? user
+                ? ([['/account', (user.name || user.email).length > 18 ? (user.name || user.email).slice(0, 18) + '…' : (user.name || user.email)]] as [string, string][])
+                : ([['/sign-in', 'Sign In']] as [string, string][])
+              : []),
           ] as [string, string][]).map(([to, label]) => (
             <Link key={`${to}-${label}`} to={to} className="mobile-nav-link" onClick={() => setIsMenuOpen(false)}>
               {label}

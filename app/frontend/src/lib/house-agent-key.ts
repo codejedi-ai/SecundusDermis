@@ -24,11 +24,15 @@ export function clearHouseAgentKeyCache(): void {
   }
 }
 
-/** Mint or return the server-side house ``sdag_…`` for this signed-in patron. */
-export async function fetchHouseAgentKey(browserSessionId: string): Promise<string> {
+/** Mint or return the server-side house ``sdag_…`` (signed-in patron or guest when auth is off). */
+export async function fetchHouseAgentKey(browserSessionId?: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (browserSessionId?.trim()) {
+    headers['session-id'] = browserSessionId.trim();
+  }
   const res = await fetch(`${API_BASE}/auth/house-agent-key`, {
     credentials: 'include',
-    headers: { 'session-id': browserSessionId },
+    headers: Object.keys(headers).length ? headers : undefined,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);

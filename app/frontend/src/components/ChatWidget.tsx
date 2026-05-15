@@ -6,6 +6,7 @@ import * as chatApi from '../services/chatApi';
 import { shopContextForChatRequest } from '../lib/shopBridge';
 import { useShop } from '../lib/shop-context';
 import { useConvo, SD_CHAT_OPEN_EVENT } from '../lib/convo-context';
+import { AUTH_ENABLED } from '../lib/auth-config';
 import { useAuth } from '../lib/auth-context';
 import { isAtelierExperience } from '../lib/experience-mode';
 import { useSocket } from '../lib/socket-context';
@@ -151,7 +152,11 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
 
   // Boutique: auto-connect the house ``sdag_…`` (master stylist key) — no Agents hub required.
   useEffect(() => {
-    if (!boutiqueMode || !authSessionId) {
+    if (!boutiqueMode) {
+      setHouseAgentKey(null);
+      return;
+    }
+    if (AUTH_ENABLED && !authSessionId) {
       setHouseAgentKey(null);
       return;
     }
@@ -161,7 +166,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     }
     let cancelled = false;
     setHouseKeyLoading(true);
-    fetchHouseAgentKey(authSessionId)
+    fetchHouseAgentKey(authSessionId ?? undefined)
       .then((token) => {
         if (!cancelled) setHouseAgentKey(token);
       })
@@ -207,7 +212,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     // Require at least text or image
     if ((!text && !hasImage) || loading) return;
 
-    if (!authSessionId) {
+    if (AUTH_ENABLED && !authSessionId) {
       if (sendHintTimerRef.current) clearTimeout(sendHintTimerRef.current);
       setSendBlockedHint('Sign in to send messages.');
       sendHintTimerRef.current = setTimeout(() => {
@@ -220,14 +225,14 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
     if (boutiqueMode && !houseAgentKey) {
       if (sendHintTimerRef.current) clearTimeout(sendHintTimerRef.current);
       setSendBlockedHint(
-        houseKeyLoading ? 'Connecting the house stylist…' : 'House stylist unavailable. Try signing in again.',
+        houseKeyLoading ? 'Connecting the house stylist…' : 'House stylist unavailable. Try again shortly.',
       );
       sendHintTimerRef.current = setTimeout(() => {
         setSendBlockedHint(null);
         sendHintTimerRef.current = null;
       }, 5000);
-      if (!houseKeyLoading && authSessionId) {
-        void fetchHouseAgentKey(authSessionId)
+      if (!houseKeyLoading) {
+        void fetchHouseAgentKey(authSessionId ?? undefined)
           .then(setHouseAgentKey)
           .catch(() => {});
       }
@@ -272,7 +277,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
       const imageId = hasImage
         ? boutiqueMode && houseAgentKey
           ? await chatApi.uploadImage(imageToSend!.file, houseAgentKey).then((r) => r.image_id)
-          : await chatApi.uploadImageBrowserSession(imageToSend!.file, authSessionId).then((r) => r.image_id)
+          : await chatApi.uploadImageBrowserSession(imageToSend!.file, authSessionId ?? undefined).then((r) => r.image_id)
         : undefined;
 
       const messageText = text || (hasImage ? 'Find items similar to this image' : '');
@@ -293,9 +298,9 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
               messageText,
               imageId,
               chatSessionId,
-              authSessionId,
+              authSessionId ?? undefined,
               shopCtx,
-              authSessionId,
+              authSessionId ?? undefined,
               historyForApi,
             );
 
@@ -439,7 +444,7 @@ export default function ChatWidget({ variant = 'floating' }: { variant?: ChatWid
             </p>
           )}
 
-          {!session && (
+          {AUTH_ENABLED && !session && (
             <div className="chat-patron-hint" role="note">
               <Link to="/sign-in">Sign in</Link>
               <span>

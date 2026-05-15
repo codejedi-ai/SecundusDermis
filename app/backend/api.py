@@ -403,6 +403,19 @@ def _browser_session_id(
     return h or c or None
 
 
+def _raise_if_auth_disabled() -> None:
+    if not config.AUTH_ENABLED:
+        raise HTTPException(status_code=503, detail="Sign-in is temporarily disabled.")
+
+
+def _require_browser_user(browser_sid: Optional[str]) -> None:
+    """Enforce signed-in patron when ``AUTH_ENABLED``; no-op when sign-in is disconnected."""
+    if not config.AUTH_ENABLED:
+        return
+    if not browser_sid or not get_user_from_session(browser_sid):
+        raise HTTPException(status_code=401, detail="Sign in required.")
+
+
 def _attach_session_cookie(response: JSONResponse, session_id: str) -> None:
     """
     HttpOnly session cookie. SameSite/Secure can be tuned for split-origin deployments
@@ -851,8 +864,15 @@ async def upload_image_retired():
 
 # ── Auth, Cart, etc (simplified) ──────────────────────────────────────────────
 
+@api_router.get("/auth/config")
+async def auth_config():
+    """Whether patron sign-in routes are active (SPA hides auth UI when ``enabled`` is false)."""
+    return {"enabled": config.AUTH_ENABLED}
+
+
 @api_router.post("/auth/register", response_model=RegisterResponse, status_code=201)
 async def register(user: UserCreate):
+    _raise_if_auth_disabled()
     try:
         out = create_user(email=user.email, password=user.password, name=user.name)
     except UsersStorageFullError:
@@ -917,6 +937,7 @@ async def resend_verification_ep(payload: dict):
 
 @api_router.post("/auth/login", response_model=LoginResponse)
 async def login(user: UserLogin):
+    _raise_if_auth_disabled()
     session_id, auth_err = try_authenticate(
         email=(user.email or "").strip(),
         password=user.password or "",
@@ -977,6 +998,7 @@ async def logout_endpoint(session_id: Optional[str] = Depends(_browser_session_i
 
 @api_router.get("/auth/me", response_model=None)
 async def get_current_user(session_id: Optional[str] = Depends(_browser_session_id)):
+    _raise_if_auth_disabled()
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
@@ -1000,6 +1022,7 @@ async def update_profile(
     profile: "ProfileUpdate",
     session_id: Optional[str] = Depends(_browser_session_id),
 ):
+    _raise_if_auth_disabled()
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
     current = get_user_from_session(session_id)
@@ -1110,7 +1133,11 @@ async def auth_house_agent_key(session_id: Optional[str] = Depends(_browser_sess
     """
     Return the patron's auto-provisioned **house stylist** ``sdag_…`` (boutique corner chat).
     Created on first request; stored server-side so the SPA does not need the Agents hub.
+    When sign-in is disabled, uses ``GUEST_PATRON_EMAIL`` (no session required).
     """
+    if not config.AUTH_ENABLED:
+        token = house_agent_key.get_or_create_house_agent_key(config.GUEST_PATRON_EMAIL)
+        return {"token": token, "label": house_agent_key.HOUSE_AGENT_LABEL}
     if not session_id:
         raise HTTPException(status_code=401, detail="No session")
     user = get_user_from_session(session_id)
@@ -1301,9 +1328,8 @@ async def browser_agent_image_upload(
     file: UploadFile = File(...),
     browser_sid: Optional[str] = Depends(_browser_session_id),
 ):
-    """Same image storage as ``/patron/agent/image/upload``; requires a signed-in browser session."""
-    if not browser_sid or not get_user_from_session(browser_sid):
-        raise HTTPException(status_code=401, detail="Sign in required.")
+    """Same image storage as ``/patron/agent/image/upload``; requires sign-in when ``AUTH_ENABLED``."""
+    _require_browser_user(browser_sid)
     return await _store_chat_upload_image(file)
 
 
@@ -1423,9 +1449,8 @@ async def browser_agent_chat_stream(
     request: ChatRequest,
     browser_sid: Optional[str] = Depends(_browser_session_id),
 ):
-    """SSE stylist chat for the signed-in SPA (session cookie or ``session-id``); same body as patron stream."""
-    if not browser_sid or not get_user_from_session(browser_sid):
-        raise HTTPException(status_code=401, detail="Sign in required.")
+    """SSE stylist chat for the SPA; sign-in required only when ``AUTH_ENABLED``."""
+    _require_browser_user(browser_sid)
     return _agent_service_chat_stream_response(request)
 
 
